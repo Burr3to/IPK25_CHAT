@@ -1,0 +1,10 @@
+global using CommandLine;
+global using CommandLine.Text;
+global using System.Net.Sockets;
+global using System.Text;
+global using Microsoft.Extensions.Logging;
+global using System.Text.RegularExpressions;
+global using System.Threading;
+global using System.Net;
+global using System.IO;
+global using System.Collections.Concurrent;
