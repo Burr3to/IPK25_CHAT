@@ -1,10 +1,5 @@
-using Microsoft.Extensions.Logging; // Make sure you have this using statement
-using System.Text.RegularExpressions;
-using System; // For StringSplitOptions if needed later
-
 namespace IPK25_CHAT;
 
-// Client States remain the same
 public enum ClientState
 {
 	Start,
@@ -84,8 +79,6 @@ public static class Utils
 
 		return value;
 	}
-
-	// Note: Formatting methods now accept ILogger for truncation warnings
 
 	public static string FormatErrorMessage(string displayName, string messageContent, ILogger logger)
 	{
@@ -219,15 +212,14 @@ public static class Utils
 	// The missing parsing method
 	public static ParsedServerMessage ParseServerMessage(string message, ILogger logger)
 	{
-		var result = new ParsedServerMessage { OriginalMessage = message }; // Default type is Unknown
+		var result = new ParsedServerMessage { OriginalMessage = message };
 
 		if (string.IsNullOrWhiteSpace(message))
 		{
 			logger.LogWarning("Received empty or whitespace message line.");
-			return result; // Return Unknown type
+			return result; 
 		}
 
-		// Trim potentially remaining whitespace just in case, although ReadLineAsync should handle CRLF.
 		message = message.Trim();
 
 		Match match;
