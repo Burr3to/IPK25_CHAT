@@ -8,3 +8,4 @@ global using System.Threading;
 global using System.Net;
 global using System.IO;
 global using System.Collections.Concurrent;
+global using IPK25_CHAT.Utilities;

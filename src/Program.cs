@@ -1,4 +1,5 @@
-﻿using IPK25_CHAT.Udp;
+﻿using IPK25_CHAT.Tcp;
+using IPK25_CHAT.Udp;
 
 namespace IPK25_CHAT;
 
@@ -30,14 +31,14 @@ class Program
 		// 3. Create and Run the Client
 		if (parsedOptions.Transport.ToLower() == "tcp")
 		{
-			var messages = new Messages(loggerFactory.CreateLogger<Messages>());
-			var tcpClient = new TcpChatClient(loggerFactory.CreateLogger<TcpChatClient>(), messages);
+			var userInputParser = new UserInputParser(loggerFactory.CreateLogger<UserInputParser>());
+			var tcpClient = new TcpChatClient(loggerFactory.CreateLogger<TcpChatClient>(), userInputParser );
 			await tcpClient.StartClientAsync(parsedOptions);
 		}
 		else if (parsedOptions.Transport.ToLower() == "udp")
 		{
-			var messages = new Messages(loggerFactory.CreateLogger<Messages>());
-			var udpClient = new UdpChatClient(loggerFactory.CreateLogger<UdpChatClient>(), messages);
+			var userInputParser = new UserInputParser(loggerFactory.CreateLogger<UserInputParser>());
+			var udpClient = new UdpChatClient(loggerFactory.CreateLogger<UdpChatClient>(), userInputParser);
 			await udpClient.StartClientAsync(parsedOptions);
 			return;
 		}
