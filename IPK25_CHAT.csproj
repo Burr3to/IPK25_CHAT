@@ -5,7 +5,7 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AssemblyName>ipk25_chat</AssemblyName>
+        <AssemblyName>ipk25chat-client</AssemblyName>
     </PropertyGroup>
 
     <ItemGroup>
