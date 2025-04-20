@@ -1,11 +1,3 @@
-using System;
-using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using Microsoft.Extensions.Logging;
-
-// Add necessary using directives for the enums if they were moved to separate files
-
 namespace IPK25_CHAT;
 
 // Provides general client utility methods (networking, state management, UI help)

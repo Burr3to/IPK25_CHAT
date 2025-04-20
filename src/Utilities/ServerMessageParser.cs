@@ -1,12 +1,4 @@
-using System;
-using System.Net; // Required for IPEndPoint if ParsedServerMessage is moved here
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
-
-// Add necessary using directives for ParsedServerMessage and ServerMessageType
-// Keeping ParsedServerMessage separate for now.
-
-namespace IPK25_CHAT;
+namespace IPK25_CHAT.Utilities;
 
 // Class to hold parsed server message info (both TCP and UDP fields)
 public class ParsedServerMessage

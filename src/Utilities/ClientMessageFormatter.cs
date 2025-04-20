@@ -1,8 +1,4 @@
-using System;
-using Microsoft.Extensions.Logging;
-// Add necessary using directives for ProtocolValidation
-
-namespace IPK25_CHAT;
+namespace IPK25_CHAT.Utilities;
 
 // Provides static methods for formatting data into protocol-compliant TCP message strings.
 public static class ClientMessageFormatter // Made static
@@ -29,7 +25,6 @@ public static class ClientMessageFormatter // Made static
     // --- Formatting Methods (Outgoing) ---
 
     // Helper method to truncate a string to a maximum length and log a warning if truncation occurs.
-    // Requires an ILogger instance passed in.
     public static string Truncate(string value, int maxLength, string fieldName, ILogger logger) // Added logger parameter
     {
         if (value != null && value.Length > maxLength)
@@ -46,7 +41,6 @@ public static class ClientMessageFormatter // Made static
     // Formats an ERR message string according to the protocol specification.
     // Truncates parameters if necessary and validates the result using ProtocolValidation.
     // Returns null if parameters are invalid even after truncation.
-    // Requires an ILogger instance passed in.
     public static string FormatErrorMessage(string displayName, string messageContent, ILogger logger) // Added logger parameter
     {
         var truncatedDisplayName = Truncate(displayName, ProtocolValidation.MaxDisplayNameLength, "ERR DisplayName", logger);
@@ -65,7 +59,6 @@ public static class ClientMessageFormatter // Made static
     // Formats an AUTH message string according to the protocol specification.
     // Truncates parameters if necessary and validates the result using ProtocolValidation.
     // Returns null if parameters are invalid even after truncation.
-    // Requires an ILogger instance passed in.
     public static string FormatAuthMessage(string username, string displayName, string secret, ILogger logger) // Added logger parameter
     {
         var tUsername = Truncate(username, ProtocolValidation.MaxIdLength, "AUTH Username", logger);
@@ -84,7 +77,6 @@ public static class ClientMessageFormatter // Made static
     // Formats a JOIN message string according to the protocol specification.
     // Truncates parameters if necessary and validates the result using ProtocolValidation.
     // Returns null if parameters are invalid even after truncation.
-    // Requires an ILogger instance passed in.
     public static string FormatJoinMessage(string channelId, string displayName, ILogger logger) // Added logger parameter
     {
         var tChannelId = Truncate(channelId, ProtocolValidation.MaxIdLength, "JOIN ChannelID", logger);
@@ -102,7 +94,6 @@ public static class ClientMessageFormatter // Made static
     // Formats a MSG message string according to the protocol specification.
     // Truncates parameters if necessary and validates the result using ProtocolValidation.
     // Returns null if parameters are invalid even after truncation.
-    // Requires an ILogger instance passed in.
     public static string FormatMsgMessage(string displayName, string messageContent, ILogger logger) // Added logger parameter
     {
         var tDisplayName = Truncate(displayName, ProtocolValidation.MaxDisplayNameLength, "MSG DisplayName", logger);
@@ -120,7 +111,6 @@ public static class ClientMessageFormatter // Made static
     // Formats a BYE message string according to the protocol specification.
     // Truncates parameters if necessary and validates the result using ProtocolValidation.
     // Returns null if parameters are invalid even after truncation.
-    // Requires an ILogger instance passed in.
     public static string FormatByeMessage(string displayName, ILogger logger) // Added logger parameter
     {
         var tDisplayName = Truncate(displayName, ProtocolValidation.MaxDisplayNameLength, "BYE DisplayName", logger);

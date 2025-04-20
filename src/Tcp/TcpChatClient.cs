@@ -54,6 +54,7 @@ public class TcpChatClient
 		};
 	}
 
+
 	// --- Public Entry Point ---
 
 	// Starts the client: resolves server address, connects, and begins receive/send loops.
@@ -475,7 +476,6 @@ public class TcpChatClient
 			if (wasAuth)
 			{
 				_logger.LogWarning("Authentication failed: {Reason}", reply.Content);
-				// Authentication failed, go back to Connected state to allow re-auth attempt
 				Utils.SetState(ref _currentState, ClientState.Connected, _logger);
 				_currentUsername = null; // Clear local credentials on failure
 				_currentDisplayName = null;
@@ -484,9 +484,6 @@ public class TcpChatClient
 			else if (wasJoin)
 			{
 				_logger.LogWarning("Join failed: {Reason}", reply.Content);
-				// Join failed, go back to Authenticated state
-				// Note: Your original code set state to Joined here on failure which seems incorrect.
-				// Assuming Authenticated is the correct state after failed JOIN.
 				Utils.SetState(ref _currentState, ClientState.Authenticating, _logger);
 				_currentChannelId = null; // Clear pending channel ID on failure
 				Console.WriteLine($"ERROR: Failed to join channel {_currentState}.");
@@ -571,7 +568,6 @@ public class TcpChatClient
 				break;
 
 			case UserInputParser.CommandParseResultType.Rename:
-				// /rename is handled locally in this protocol version (based on original code logic)
 				// Truncate display name using static ClientMessageFormatter helper, passing logger
 				string newName = ClientMessageFormatter.Truncate(parsedInput.DisplayName, ProtocolValidation.MaxDisplayNameLength, "Rename DisplayName", _logger);
 				// Validate truncated name using static ProtocolValidation
@@ -597,7 +593,7 @@ public class TcpChatClient
 				break;
 
 			case UserInputParser.CommandParseResultType.ChatMessage:
-				// Check prerequisites (must be joined) - Redundant due to IsCommandAllowedInCurrentState, but safe
+				// Check prerequisites (must be joined) 
 				if (_currentState != ClientState.Joined) // Chat requires Joined state
 				{
 					_logger.LogWarning("Attempted ChatMessage from incorrect state after validation: {State}", _currentState);
@@ -663,8 +659,7 @@ public class TcpChatClient
 		if (_socket == null || !_socket.Connected || _currentState == ClientState.End)
 		{
 			_logger.LogWarning("Cannot send message, socket is null, not connected, or client is ending/ended.");
-			// Consider if this state should initiate shutdown if not already happening
-			return; // Just return if not in a state to send
+			return;
 		}
 
 		try
@@ -690,7 +685,6 @@ public class TcpChatClient
 		catch (OperationCanceledException)
 		{
 			_logger.LogDebug("Send operation cancelled.");
-			// Cancellation is expected during shutdown, no error
 		}
 		catch (SocketException ex)
 		{
@@ -761,7 +755,6 @@ public class TcpChatClient
 			{
 				try
 				{
-					// Send ERR as a best-effort, non-reliable message during shutdown
 					using var errCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500)); // Short timeout for send
 					byte[] errBytes = Encoding.ASCII.GetBytes(errMessage);
 					await _socket.SendAsync(errBytes, SocketFlags.None, errCts.Token);
@@ -838,8 +831,6 @@ public class TcpChatClient
 
 		// Clean up resources (socket, CTS, etc.) immediately after signaling cancellation and attempting BYE send
 		OwnDispose();
-
-		// State will be set to End in OwnDispose
 	}
 
 	// Disposes of client resources (socket, cancellation token sources, wait handle).

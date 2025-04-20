@@ -1,4 +1,4 @@
-namespace IPK25_CHAT;
+namespace IPK25_CHAT.Utilities;
 
 public class ArgumentParser
 {

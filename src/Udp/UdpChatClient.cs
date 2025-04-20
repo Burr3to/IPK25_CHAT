@@ -162,7 +162,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				{
 					_logger.LogInformation("End of input detected or cancellation requested. Initiating graceful shutdown...");
 					if (!_cts.IsCancellationRequested) // Avoid double-triggering shutdown
-						await InitiateShutdownAsync("User initiated shutdown (EOF/Ctrl+D/Cancel).", true); // Pass true
+						await InitiateShutdownAsync("User initiated shutdown (EOF/Ctrl+D/Cancel).", true);
 					break;
 				}
 
@@ -287,7 +287,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				break;
 
 			case UserInputParser.CommandParseResultType.Join:
-				// Check prerequisites (must be authenticated) - Redundant due to HandleUserInputUdpAsync validation, but safe
+				// Check prerequisites (must be authenticated) 
 				if (_currentState != ClientState.Authenticating && _currentState != ClientState.Joined) // Can join from Authenticated or already Joined
 				{
 					_logger.LogWarning("Attempted JOIN from incorrect state after validation: {State}", _currentState);
@@ -303,10 +303,9 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 				// Set state *before* sending request
 				// Note: UDP JOIN might stay in Authenticated until JOIN OK REPLY
-				// Let's set to Joining state while waiting for reply, revert on failure/timeout.
 				Utils.SetState(ref _currentState, ClientState.Joining, _logger);
 				_currentChannelId = parsed.ChannelId; // Store pending channel ID
-				_logger.LogInformation($"Attempting to join channel '{parsed.ChannelId}'..."); // User feedback (assuming allowed)
+				_logger.LogInformation($"Attempting to join channel '{parsed.ChannelId}'...");
 
 				// Send JOIN packet and wait for REPLY using reliable send mechanism
 				await SendJoinRequestAsync(parsed.ChannelId, _currentDisplayName, cancellationToken); // Use confirmed display name, Defined below
@@ -315,7 +314,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 			case UserInputParser.CommandParseResultType.Rename:
 				// /rename is handled locally in this protocol version (based on original code logic)
-				// Truncate display name using static ClientMessageFormatter helper (even if not sent, for validation/local storage), passing logger
+				// Truncate display name using static ClientMessageFormatter
 				string newName = ClientMessageFormatter.Truncate(parsed.DisplayName, ProtocolValidation.MaxDisplayNameLength, "Rename DisplayName", _logger);
 				// Validate truncated name using static ProtocolValidation
 				if (ProtocolValidation.IsValidDisplayName(newName))
@@ -693,7 +692,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 		// Get next message ID and format the packet
 		ushort messageId = _nextMessageId++;
-		byte[] msgBytes = UdpMessageFormat.FormatMsgManually(messageId, displayName, messageContent); // Assumes UdpMessageFormat static class
+		byte[] msgBytes = UdpMessageFormat.FormatMsgManually(messageId, displayName, messageContent);
 
 		if (msgBytes == null)
 		{
@@ -776,7 +775,6 @@ public partial class UdpChatClient // Indicates this class definition is split a
 			_logger.LogDebug("Shutdown already initiated or in progress. Reason: {Reason}", reason);
 			return;
 		}
-		// Add private int _shutdownInitiatedFlag = 0; to your class fields
 
 
 		_logger.LogInformation("Initiating graceful shutdown. Reason: {Reason}", reason);
@@ -803,11 +801,9 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 				using var reliableByeTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
-				// --- FIX: Don't pass the main _cts token here ---
 				// Let SendReliableUdpMessageAsync manage its own retries/timeouts based on the token we give it.
 				reliableByeTask = SendReliableUdpMessageAsync(byeId, byeBytes, _currentServerEndPoint, reliableByeTimeoutCts.Token);
 
-				// We will await this task *later*, after signalling main cancellation
 			}
 			else
 			{
@@ -938,7 +934,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 			try
 			{
 				// Close the connection and release the handle for UDP
-				socketToDispose.Close(); // Close() implicitly Disposes()
+				socketToDispose.Close(); // implicitly Disposes()
 				_logger.LogDebug("Socket Close called.");
 			}
 			catch (Exception ex) // Catch errors during Close

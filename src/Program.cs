@@ -7,7 +7,7 @@ class Program
 {
 	static async Task Main(string[] args)
 	{
-		// 1. Configure Logging (Simplified)
+		// 1. Configure Logging 
 		using var loggerFactory = LoggerFactory.Create(builder =>
 		{
 			builder.AddSimpleConsole(options =>
