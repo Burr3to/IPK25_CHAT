@@ -28,6 +28,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 	// --- Reliability & Control ---
 	private CancellationTokenSource _cts; // Main cancellation token source for client operations
+	private volatile int _shutdownInitiatedFlag = 0;
 
 	// Message ID counter for outgoing packets
 	private ushort _nextMessageId = 0;
@@ -769,82 +770,95 @@ public partial class UdpChatClient // Indicates this class definition is split a
 	// isClientInitiatedEof is true if triggered by user input EOF (Ctrl+C/D), false otherwise (server BYE, error, etc.).
 	private async Task InitiateShutdownAsync(string reason, bool isClientInitiatedEof = false)
 	{
-		// Check if already shutting down
-		if (_cts != null && _cts.IsCancellationRequested)
+		// Use a flag to prevent re-entrancy more reliably than just checking _cts
+		if (Interlocked.CompareExchange(ref _shutdownInitiatedFlag, 1, 0) != 0)
 		{
-			_logger.LogDebug("Shutdown already initiated. Reason: {Reason}", reason);
+			_logger.LogDebug("Shutdown already initiated or in progress. Reason: {Reason}", reason);
 			return;
 		}
+		// Add private int _shutdownInitiatedFlag = 0; to your class fields
+
 
 		_logger.LogInformation("Initiating graceful shutdown. Reason: {Reason}", reason);
 		Console.WriteLine($"ERROR: Client shutting down ({reason}).");
 
-		// --- Capture state BEFORE signalling main cancellation ---
 		ClientState stateBeforeShutdown = _currentState;
 
-		// --- Signal main cancellation AFTER capturing state but BEFORE sending BYE ---
-		// This ensures loops stop but doesn't interfere with the final send.
-		_cts?.Cancel();
+		// --- Keep main cancellation for stopping loops/long waits ---
+		// We still need to signal the main loops to stop eventually.
+		// But we do it *after* attempting the reliable BYE send.
 
-		// Attempt to send BYE
+		Task reliableByeTask = Task.CompletedTask; // Task to wait for
+
 		if (isClientInitiatedEof && _socket != null && _currentServerEndPoint != null &&
 		    (stateBeforeShutdown == ClientState.Authenticating || stateBeforeShutdown == ClientState.Joined || stateBeforeShutdown == ClientState.Joining))
 		{
-			_logger.LogInformation("Attempting to send BYE message to {TargetEndPoint}...", _currentServerEndPoint);
 			ushort byeId = _nextMessageId++;
 			string byeDisplayName = string.IsNullOrEmpty(_currentDisplayName) ? "Client" : _currentDisplayName;
 			byte[] byeBytes = UdpMessageFormat.FormatByeManually(byeId, byeDisplayName);
 
 			if (byeBytes != null)
 			{
-				try
-				{
-					// Use ONLY the short timeout token for the final send ---
-					using var byeTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+				_logger.LogInformation("Attempting to send BYE (ID: {ByeId}) message to {TargetEndPoint} and wait for CONFIRM...", byeId, _currentServerEndPoint);
 
-					// Double-check socket is still valid *before* sending
-					if (_socket != null)
-					{
-						// Pass ONLY the timeout token, not the main cancelled one
-						await _socket.SendToAsync(byeBytes, SocketFlags.None, _currentServerEndPoint, byeTimeoutCts.Token);
-						_logger.LogInformation("BYE message (ID: {ByeId}) sent (best effort).", byeId);
-					}
-					else
-					{
-						_logger.LogWarning("Socket became null before sending BYE message.");
-					}
-				}
-				catch (OperationCanceledException) // Catch timeout specifically
-				{
-					_logger.LogWarning("Sending BYE message timed out (1 second limit).");
-				}
-				catch (Exception ex) // Catch other errors (SocketException, etc.)
-				{
-					_logger.LogWarning(ex, "Failed to send BYE message during shutdown.");
-				}
+				using var reliableByeTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+				// --- FIX: Don't pass the main _cts token here ---
+				// Let SendReliableUdpMessageAsync manage its own retries/timeouts based on the token we give it.
+				reliableByeTask = SendReliableUdpMessageAsync(byeId, byeBytes, _currentServerEndPoint, reliableByeTimeoutCts.Token);
+
+				// We will await this task *later*, after signalling main cancellation
 			}
 			else
 			{
 				_logger.LogWarning("Failed to format BYE message during shutdown.");
 			}
 		}
-		else
+
+		// --- Now, wait for the reliable BYE send attempt to finish ---
+		try
 		{
-			_logger.LogDebug(
-				"Skipping sending BYE message during shutdown. isClientInitiatedEof={IsClientEOF}, SocketNotNull={SocketNotNull}, EndPointSet={EndPointSet}, StateBeforeShutdown={State}, DisplayNameSet={DisplayNameSet}", // Use stateBeforeShutdown here too for consistency
-				isClientInitiatedEof, _socket != null, _currentServerEndPoint != null, stateBeforeShutdown, !string.IsNullOrEmpty(_currentDisplayName));
+			await reliableByeTask; // Wait for the SendReliableUdpMessageAsync task to complete
+
+			// Check the result if needed (the variable 'confirmed' logic from previous example)
+			// This requires SendReliableUdpMessageAsync to be captured differently or have its result checked
+			// Simpler: Just log based on task status if needed, or assume best effort completed.
+			if (reliableByeTask.IsCompletedSuccessfully)
+			{
+				// You'd need to modify SendReliable to return info or check the bool result differently
+				_logger.LogInformation("Reliable BYE send task completed (check logs for actual confirmation).");
+			}
+			else if (reliableByeTask.IsCanceled)
+			{
+				_logger.LogWarning("Reliable BYE send task was cancelled (likely timed out).");
+			}
+			else if (reliableByeTask.IsFaulted)
+			{
+				_logger.LogError(reliableByeTask.Exception?.GetBaseException(), "Reliable BYE send task failed.");
+			}
+		}
+		catch (Exception ex)
+		{
+			// Catch potential exceptions from the await itself if the task failed badly
+			_logger.LogError(ex, "Exception awaiting reliable BYE send task.");
 		}
 
-		// Set state to End
+		// --- Now Signal Main Cancellation ---
+		_logger.LogDebug("Signalling main cancellation token.");
+		_cts?.Cancel();
+
+		// --- Set Final State ---
+		// State is set to End AFTER attempting BYE and signalling cancellation.
 		Utils.SetState(ref _currentState, ClientState.End, _logger);
 
-		// Cancel any outstanding pending operations
+		// --- Cancel Pending Operations (that might have been started before cancellation signal) ---
+		// This is somewhat redundant if main loops check cancellation properly, but safe.
 		CancelAllPendingOperations($"Shutdown initiated: {reason}");
 
-		// Delay slightly to allow BYE packet potentially leave the system
-		await Task.Delay(50, CancellationToken.None);
+		// --- Short delay AFTER main cancellation to allow loops to potentially exit ---
+		await Task.Delay(100, CancellationToken.None); // Increased delay slightly
 
-		// Dispose resources
+		// --- Dispose resources ---
 		OwnDispose();
 	}
 

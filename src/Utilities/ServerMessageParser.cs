@@ -35,6 +35,7 @@ public class ParsedServerMessage
 	public string MessageContent { get; set; } // Original name maintained
 }
 
+// Made by Gemini as stated in documentation
 // Provides static methods for parsing incoming TCP messages from the server.
 public static class ServerMessageParser // Made static
 {

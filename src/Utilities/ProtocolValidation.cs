@@ -23,6 +23,7 @@ public static class ProtocolValidation
     public const int MaxDisplayNameLength = 20;
 
     // --- Regular Expressions for Validation ---
+    //  Regex functionality made by Gemini as stated in documentation
     // Regex pattern for validating Username and Channel ID fields ([a-zA-Z0-9_-], length 1-MaxIdLength).
     public static readonly string IdRegexPattern = $"^[a-zA-Z0-9_-]{{1,{MaxIdLength}}}$";
 
