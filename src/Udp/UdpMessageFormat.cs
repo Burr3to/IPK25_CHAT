@@ -1,9 +1,3 @@
-using System;
-using System.Net; // For IPAddress.HostToNetworkOrder
-using System.Text; // For Encoding.ASCII
-// Add necessary using directives for MessageType and MessagesSizeBytes enums
-using IPK25_CHAT; // Assuming MessageType and MessagesSizeBytes are in this namespace
-
 namespace IPK25_CHAT.Udp;
 
 // Provides static methods for manually formatting outgoing UDP messages into byte arrays,
@@ -40,7 +34,7 @@ public static class UdpMessageFormat
 		if (currentIndex != totalSize)
 		{
 			// Log or output an error if there's a mismatch (indicates a bug in formatting logic).
-			Console.WriteLine($"[ManualFormatConfirm] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Return null to indicate formatting failure.
 		}
 
@@ -96,7 +90,7 @@ public static class UdpMessageFormat
 		// Basic verification: Check if the number of bytes written matches the calculated total size.
 		if (currentIndex != totalSize)
 		{
-			Console.WriteLine($"[ManualFormatAuth] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Indicate formatting failure.
 		}
 
@@ -146,7 +140,7 @@ public static class UdpMessageFormat
 		// Basic verification.
 		if (currentIndex != totalSize)
 		{
-			Console.WriteLine($"[ManualFormatJoin] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Indicate formatting failure.
 		}
 
@@ -196,7 +190,7 @@ public static class UdpMessageFormat
 		// Basic verification.
 		if (currentIndex != totalSize)
 		{
-			Console.WriteLine($"[ManualFormatMsg] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Indicate formatting failure.
 		}
 
@@ -246,7 +240,7 @@ public static class UdpMessageFormat
 		// Basic verification.
 		if (currentIndex != totalSize)
 		{
-			Console.WriteLine($"[ManualFormatErr] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Indicate formatting failure.
 		}
 
@@ -290,7 +284,7 @@ public static class UdpMessageFormat
 		// Basic verification.
 		if (currentIndex != totalSize)
 		{
-			Console.WriteLine($"[ManualFormatBye] ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
+			Console.WriteLine($"ERROR: Mismatch in calculated size ({totalSize}) and bytes written ({currentIndex}).");
 			return null; // Indicate formatting failure.
 		}
 

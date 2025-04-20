@@ -3,7 +3,6 @@ namespace IPK25_CHAT.Udp;
 // Partial class definition for the UDP chat client, focusing on receiving and processing incoming messages.
 public partial class UdpChatClient
 {
-
 	// --- Receiving Loop ---
 
 	// Handles continuous receiving of UDP datagrams from any source.
@@ -60,10 +59,10 @@ public partial class UdpChatClient
 				switch (messageType)
 				{
 					case (byte)MessageType.ReplyType:
-						ParseAndHandleReply(buffer, bytesRead, messageId, currentSender); // Process REPLY
+						await ParseAndHandleReply(buffer, bytesRead, messageId, currentSender); // Process REPLY
 						break;
 					case (byte)MessageType.MsgType:
-						ParseAndHandleMsg(buffer, bytesRead, messageId, currentSender); // Process MSG
+						await ParseAndHandleMsg(buffer, bytesRead, messageId, currentSender); // Process MSG
 						break;
 					case (byte)MessageType.PingType:
 						_logger.LogDebug("Received PING (ID: {MessageId}) from {Sender}. Confirmation sent.", messageId, currentSender);
@@ -82,8 +81,7 @@ public partial class UdpChatClient
 					case (byte)MessageType.JoinType:
 						_logger.LogWarning("Received unexpected client message Type 0x{Type:X2} ({MessageType}) from {Sender}. Ignoring content.",
 							messageType, ((MessageType)messageType).ToString(), currentSender);
-						// Optionally send an ERR back for unexpected message types
-						// await SendErrorAsync($"Received unexpected message type 0x{messageType:X2} ({((MessageType)messageType).ToString()}).", currentSender); // Defined in main partial
+						Console.WriteLine("ERROR: Received unexpected client message");
 						break;
 					default:
 						// Handle unknown or unhandled message types
@@ -93,8 +91,9 @@ public partial class UdpChatClient
 						Console.WriteLine("ERROR: Received unknown/unhandled server message.");
 						// Send ERR back for unknown types
 						await SendErrorAsync($"Protocol error: Received invalid message type 0x{messageType:X2}.", currentSender); // Defined in main partial
-						// This might be a severe enough error to initiate client shutdown
-						// await InitiateShutdownAsync($"Received unknown message type 0x{messageType:X2} from server.", false); // Defined in main partial
+						await InitiateShutdownAsync($"Received unknown message type 0x{messageType:X2} from server.", true); // Defined in main partial
+						Environment.ExitCode = 1;
+
 						break;
 				}
 			}
@@ -116,8 +115,8 @@ public partial class UdpChatClient
 				}
 				else
 				{
-                     // Socket exception occurred because cancellation requested and socket is being closed/disposed
-                     _logger.LogDebug("ReceiveFromAsync SocketException {ErrorCode} during shutdown/cancellation.", se.SocketErrorCode);
+					// Socket exception occurred because cancellation requested and socket is being closed/disposed
+					_logger.LogDebug("ReceiveFromAsync SocketException {ErrorCode} during shutdown/cancellation.", se.SocketErrorCode);
 				}
 			}
 			catch (ObjectDisposedException)
@@ -189,7 +188,7 @@ public partial class UdpChatClient
 			_logger.LogWarning("Received malformed CONFIRM (size {BytesRead} != {ExpectedSize}) from {Sender}. Ignoring.",
 				bytesRead, (byte)MessagesSizeBytes.Confirm, sender);
 			Console.WriteLine("ERROR: Received malformed CONFIRM");
-            SendErrorAsync($"Malformed CONFIRM packet size: {bytesRead}.", sender).GetAwaiter().GetResult(); // Sync call in async void context
+			SendErrorAsync($"Malformed CONFIRM packet size: {bytesRead}.", sender).GetAwaiter().GetResult(); // Sync call in async void context
 		}
 	}
 
@@ -205,7 +204,7 @@ public partial class UdpChatClient
 		if (confirmBytes == null)
 		{
 			_logger.LogError("Failed to format CONFIRM message for received ID {ReceivedMessageId}. Message not sent.", receivedMessageId);
-            Console.WriteLine($"ERROR: Internal error formatting CONFIRM message for received ID {receivedMessageId}."); // Use internal error format
+			Console.WriteLine($"ERROR: Internal error formatting CONFIRM message for received ID {receivedMessageId}."); // Use internal error format
 			return; // Exit method
 		}
 
@@ -224,7 +223,7 @@ public partial class UdpChatClient
 		}
 		catch (OperationCanceledException)
 		{
-             _logger.LogDebug("Send CONFIRM operation cancelled.");
+			_logger.LogDebug("Send CONFIRM operation cancelled.");
 		}
 		catch (ObjectDisposedException)
 		{
@@ -242,19 +241,23 @@ public partial class UdpChatClient
 		}
 	}
 
-
-	// Parses and handles an incoming REPLY packet. Signals the waiting TaskCompletionSource for the corresponding request.
-	private void ParseAndHandleReply(byte[] buffer, int bytesRead, ushort receivedMessageId, IPEndPoint sender)
+	// Parses and handles an incoming REPLY packet. Signals the waiting TaskCompletionSource.
+// Handles malformed messages according to protocol error handling rules.
+	private async Task ParseAndHandleReply(byte[] buffer, int bytesRead, ushort receivedMessageId, IPEndPoint sender)
 	{
 		_logger.LogDebug("Parsing received REPLY message (ID: {MessageId}, Size: {BytesRead}) from {Sender}", receivedMessageId, bytesRead, sender);
 
+		// --- Malformed Check 1: Minimum Size ---
 		// Validate minimum size based on MessageSizeBytes enum
-		if (bytesRead < (int)MessagesSizeBytes.Reply)
+		if (bytesRead < (int)MessagesSizeBytes.Reply) // Header + Result + RefID + Content(min 0?) + Null
 		{
-			_logger.LogWarning("Received malformed REPLY (ID: {MessageId}, too short: {Length} bytes) from {Sender}. Ignoring.", receivedMessageId, bytesRead, sender);
-            // Optionally send ERR back for malformed packets
-            // SendErrorAsync($"Malformed REPLY packet (too short: {bytesRead} bytes).", sender).GetAwaiter().GetResult(); // Sync call
-			return; // Exit handling
+			_logger.LogWarning("Received malformed REPLY (ID: {MessageId}, too short: {Length} bytes) from {Sender}.", receivedMessageId, bytesRead, sender);
+			// --- Error Handling ---
+			Console.WriteLine("ERROR: Received malformed message from server (REPLY too short).");
+			await SendErrorAsync($"Malformed REPLY packet (too short: {bytesRead} bytes).", sender);
+			await InitiateShutdownAsync("Protocol error: Received malformed REPLY (too short).", false);
+			// --- End Error Handling ---
+			return;
 		}
 
 		try
@@ -265,7 +268,8 @@ public partial class UdpChatClient
 
 			ushort refMessageId = (ushort)IPAddress.NetworkToHostOrder(BitConverter.ToInt16(buffer, 4)); // RefMessageID is 2 bytes after result byte
 
-			int contentStartIndex = 6; // Start after Type(1) + ID(2) + Result(1) + RefID(2)
+			// --- Malformed Check 2: Content Parsing ---
+			int contentStartIndex = 6; // After Type(1) + ID(2) + Result(1) + RefID(2)
 			int nullTerminatorIndex = -1;
 
 			// Find the null terminator for the content string
@@ -278,38 +282,51 @@ public partial class UdpChatClient
 				}
 			}
 
-			// Content must be null-terminated and there must be data before the terminator
-			if (nullTerminatorIndex == -1 || nullTerminatorIndex < contentStartIndex)
+			// Content must be null-terminated
+			if (nullTerminatorIndex == -1) // No null terminator found
 			{
-				_logger.LogWarning("Received malformed REPLY (ID: {MessageId}, no or invalid null terminator for content) from {Sender}. Ignoring.", receivedMessageId, sender);
-                 // Optionally send ERR back
-                 // SendErrorAsync($"Malformed REPLY packet (missing content null terminator).", sender).GetAwaiter().GetResult(); // Sync call
-				return; // Exit handling
+				_logger.LogWarning("Received malformed REPLY (ID: {MessageId}, no null terminator for content) from {Sender}.", receivedMessageId, sender);
+				// --- Error Handling ---
+				Console.WriteLine("ERROR: Received malformed message from server (invalid REPLY content format).");
+				await SendErrorAsync($"Malformed REPLY packet (missing content null terminator).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed REPLY (invalid content).", false);
+				// --- End Error Handling ---
+				return;
 			}
 
-			// Extract the content string using ASCII encoding (or appropriate protocol encoding)
+			// Check for extra data after null terminator
+			if (nullTerminatorIndex + 1 != bytesRead)
+			{
+				_logger.LogWarning("Malformed REPLY (ID: {MessageId}): Unexpected data ({ExtraBytes} bytes) after content null terminator.", receivedMessageId,
+					bytesRead - (nullTerminatorIndex + 1));
+				// --- Error Handling ---
+				Console.WriteLine("ERROR: Received malformed message from server (extra data in REPLY).");
+				await SendErrorAsync($"Malformed REPLY packet (unexpected data after content).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed REPLY (extra data).", false);
+				// --- End Error Handling ---
+				return;
+			}
+
+
+			// Extract the content string using ASCII encoding
 			int contentLength = nullTerminatorIndex - contentStartIndex;
 			string messageContent = Encoding.ASCII.GetString(buffer, contentStartIndex, contentLength);
 
-            // Optionally check for trailing null terminator after content + final packet size validation
-            // if (nullTerminatorIndex + 1 != bytesRead) { ... malformed ... }
+			// --- Message Parsed Successfully ---
 
-			// --- Create Parsed Message Object ---
-			// Create a ParsedServerMessage object to hold the UDP-specific parsed data
+			// Create Parsed Message Object
 			ParsedServerMessage parsedReply = new ParsedServerMessage
 			{
-				// UDP specific fields
 				UdpMessageType = (byte)MessageType.ReplyType,
 				MessageId = receivedMessageId,
 				Sender = sender,
 				ReplyResult = isOkReply,
-				RefMessageId = refMessageId, // The ID of the original request this is replying to
+				RefMessageId = refMessageId,
 				MessageContent = messageContent,
-
-				// TCP-like fields (for consistency if needed elsewhere, but primary fields are UDP-specific)
-				Type = ServerMessageType.Reply, // Map UDP REPLY type to TCP ServerMessageType.Reply
+				// Map to TCP-like fields if needed
+				Type = ServerMessageType.Reply,
 				IsOkReply = isOkReply,
-				Content = messageContent // Map UDP content to TCP content field
+				Content = messageContent
 			};
 
 			_logger.LogInformation("Parsed REPLY ID:{MessageId} for ReqID:{RefMessageId} from {Sender}. Result:{Result}, Content:'{Content}'",
@@ -317,39 +334,49 @@ public partial class UdpChatClient
 
 
 			// --- Signal the Waiting Task ---
-			// Check if we have a TaskCompletionSource waiting for a REPLY with this RefMessageID
-			if (parsedReply.RefMessageId.HasValue && _pendingReplies.TryRemove(parsedReply.RefMessageId.Value, out var replyTcs)) // Remove *and* get the TCS
+			_logger.LogInformation("Processing Parsed Reply - Message ID: {MessageId}, Ref Message ID: {RefMessageId}, Has Ref Message ID: {HasRefId}",
+				parsedReply.MessageId, parsedReply.RefMessageId, parsedReply.RefMessageId.HasValue);
+
+			if (parsedReply.RefMessageId.HasValue)
 			{
-				// Signal the waiting TaskCompletionSource with the parsed reply object
-				bool signaled = replyTcs.TrySetResult(parsedReply);
-				_logger.LogDebug("Signaled pending reply handler for original request ID {RefMessageId}. Success: {Signaled}", parsedReply.RefMessageId.Value, signaled);
+				if (_pendingReplies.TryGetValue(parsedReply.RefMessageId.Value, out var replyTcs))
+				{
+					bool signaled = replyTcs.TrySetResult(parsedReply);
+					if (signaled)
+					{
+						_logger.LogDebug("Signaled pending reply handler for original request ID {RefMessageId}.", parsedReply.RefMessageId.Value);
+					}
+					else
+					{
+						_logger.LogWarning("Failed to signal pending reply handler for ID {RefMessageId} (already signaled/cancelled?).", parsedReply.RefMessageId.Value);
+					}
+				}
+				else
+				{
+					_logger.LogWarning("Received REPLY (ID:{MessageId}) but no active handler found for request ID: {RefMessageId}. Maybe timed out or already completed?",
+						receivedMessageId, parsedReply.RefMessageId);
+					// NOTE: Receiving a REPLY for a request we are no longer waiting for is *not* typically considered a terminating protocol error
+					// according to the rules. We just log and discard it.
+				}
 			}
 			else
 			{
-				// No corresponding TaskCompletionSource was found.
-				// This happens if:
-				// 1. The REPLY is a duplicate.
-				// 2. The original request timed out while waiting for CONFIRM or REPLY.
-				// 3. The original request was cancelled.
-				// 4. The server sent a REPLY without a client request (protocol violation?).
-				_logger.LogWarning("Received REPLY (ID:{MessageId}) for unknown, timed-out, or already completed/removed request ID: {RefMessageId}. Discarding.", receivedMessageId, parsedReply.RefMessageId);
-                // No console output needed for duplicate/unexpected replies according to strict rules. Log only.
+				_logger.LogWarning("Received REPLY (ID:{MessageId}) without a RefMessageId. Cannot associate with a request.", receivedMessageId);
+				// Technically malformed according to spec? If so, apply error handling. If not, just log. Assuming just log for now.
+				// If it *is* malformed:
+				// Console.WriteLine("ERROR: Received malformed message from server (REPLY missing RefID).");
+				// await SendErrorAsync($"Malformed REPLY packet (missing RefMessageId).", sender);
+				// await InitiateShutdownAsync("Protocol error: Received malformed REPLY (missing RefID).", false);
 			}
 		}
-		catch (ArgumentOutOfRangeException aoorex) // LogError during BitConverter or GetString if indices are wrong
-		{
-			_logger.LogError(aoorex, "Parsing error (ArgumentOutOfRange) processing REPLY ID:{MessageId} from {Sender}. Check indices/lengths. BytesRead:{BytesRead}",
-				receivedMessageId, sender, bytesRead);
-             Console.WriteLine($"ERROR: Internal parsing error for incoming REPLY message from {sender}."); // Use internal error format
-             // Optionally send ERR back
-             // SendErrorAsync($"Internal error parsing REPLY packet.", sender).GetAwaiter().GetResult(); // Sync call
-		}
-		catch (Exception ex) // Catch-all for other potential parsing errors
+		catch (Exception ex) // Other unexpected internal parsing errors
 		{
 			_logger.LogError(ex, "Unexpected exception while parsing REPLY message ID:{MessageId} from {Sender}", receivedMessageId, sender);
-             Console.WriteLine($"ERROR: Unexpected internal error parsing incoming REPLY message from {sender}."); // Use internal error format
-             // Optionally send ERR back
-             // SendErrorAsync($"Unexpected error parsing REPLY packet.", sender).GetAwaiter().GetResult(); // Sync call
+			// --- Error Handling ---
+			Console.WriteLine($"ERROR: Unexpected internal error parsing incoming REPLY message from {sender}.");
+			await SendErrorAsync($"Unexpected error parsing REPLY packet from {sender}.", sender);
+			await InitiateShutdownAsync($"Protocol error: Unexpected error parsing REPLY from {sender}.", false);
+			// --- End Error Handling ---
 		}
 	}
 
@@ -436,95 +463,116 @@ public partial class UdpChatClient
 		}
 	}
 
-	// Parses and handles an incoming MSG packet. Displays it if in Joined state using the specified format.
-	private void ParseAndHandleMsg(byte[] buffer, int bytesRead, ushort messageId, IPEndPoint sender)
+	// Parses and handles an incoming MSG packet. Displays it if in Joined state.
+	// Handles malformed messages according to protocol error handling rules.
+	private async Task ParseAndHandleMsg(byte[] buffer, int bytesRead, ushort messageId, IPEndPoint sender)
 	{
 		// UDP MSG Format: Type(1) | MessageID(2) | DisplayName | 0 | MessageContents | 0
 		_logger.LogDebug("Parsing received MSG message (ID: {MessageId}, Size: {BytesRead}) from {Sender}", messageId, bytesRead, sender);
 
-		// Validate minimum size based on MessageSizeBytes enum
-		if (bytesRead < (int)MessagesSizeBytes.Msg) // MSG header is 1+2+1 for length or 1+2+DN_len+1? Needs spec check. Assuming original enum value is header+lengths.
-		{
-			_logger.LogWarning("Received malformed MSG (ID: {MessageId}, too short: {Length} bytes) from {Sender}. Ignoring.", messageId, bytesRead, sender);
-            // Optionally send ERR back for malformed packets
-            // SendErrorAsync($"Malformed MSG packet (too short: {bytesRead} bytes).", sender).GetAwaiter().GetResult(); // Sync call
-			return; // Exit handling
-		}
-
-		// --- Duplicate Message Check ---
+		// --- Duplicate Message Check (Before validation, as duplicates aren't errors) ---
 		if (!_processedIncomingMessageIds.TryAdd(messageId, 1))
 		{
 			_logger.LogDebug("Received duplicate MSG (ID: {MessageId}) from {Sender}. Ignoring display.", messageId, sender);
-			return; // Ignore duplicate
+			return; // Correctly ignore duplicates without error
+		}
+
+		// --- Malformed Check 1: Minimum Size ---
+		// Assuming MessagesSizeBytes.Msg represents the *minimum* possible size
+		// (e.g., header + 1 char DN + null + 0 char content + null)
+		if (bytesRead < (int)MessagesSizeBytes.Msg)
+		{
+			_logger.LogWarning("Received malformed MSG (ID: {MessageId}, too short: {Length} bytes) from {Sender}.", messageId, bytesRead, sender);
+			// --- Error Handling as per Rules ---
+			Console.WriteLine("ERROR: Received malformed message from server (too short).");
+			await SendErrorAsync($"Malformed MSG packet (too short: {bytesRead} bytes).", sender);
+			await InitiateShutdownAsync("Protocol error: Received malformed MSG (too short).", false);
+			return; // Stop processing
 		}
 
 		try
 		{
-			// Find null terminators for DisplayName and Content strings
+			// --- Malformed Check 2: DisplayName Parsing ---
 			int displayNameStartIndex = 3; // After Type (1) + MessageID (2)
 			int displayNameNullPos = Array.IndexOf(buffer, (byte)0, displayNameStartIndex, bytesRead - displayNameStartIndex);
 
 			if (displayNameNullPos < displayNameStartIndex) // No null terminator found for display name
 			{
-				_logger.LogWarning("Malformed MSG (ID: {MessageId}): No DisplayName null terminator found. Ignoring.", messageId);
-                // Optionally send ERR back
-                // SendErrorAsync($"Malformed MSG packet (missing DisplayName null terminator).", sender).GetAwaiter().GetResult(); // Sync call
-				return; // Exit handling
+				_logger.LogWarning("Malformed MSG (ID: {MessageId}): No DisplayName null terminator found.", messageId);
+				// --- Error Handling as per Rules ---
+				Console.WriteLine("ERROR: Received malformed message from server (invalid display name format).");
+				await SendErrorAsync($"Malformed MSG packet (missing DisplayName null terminator).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed MSG (invalid display name).", false);
+				// --- End Error Handling ---
+				return; // Stop processing
 			}
 
 			string displayName = Encoding.ASCII.GetString(buffer, displayNameStartIndex, displayNameNullPos - displayNameStartIndex);
 
-			int contentStartIndex = displayNameNullPos + 1; // Start after the display name null terminator
-			if (contentStartIndex >= bytesRead) // No content present
+			// --- Malformed Check 3: Content Parsing ---
+			int contentStartIndex = displayNameNullPos + 1;
+			if (contentStartIndex >= bytesRead) // No space left even for a null terminator after display name
 			{
-				_logger.LogWarning("Malformed MSG (ID: {MessageId}): No message content found. Ignoring.", messageId);
-                 // Optionally send ERR back
-                 // SendErrorAsync($"Malformed MSG packet (missing content).", sender).GetAwaiter().GetResult(); // Sync call
-				return; // Exit handling
+				_logger.LogWarning("Malformed MSG (ID: {MessageId}): Missing content section after display name.", messageId);
+				// --- Error Handling as per Rules ---
+				Console.WriteLine("ERROR: Received malformed message from server (missing content).");
+				await SendErrorAsync($"Malformed MSG packet (missing content section).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed MSG (missing content).", false);
+				return; // Stop processing
 			}
 
 			int contentNullPos = Array.IndexOf(buffer, (byte)0, contentStartIndex, bytesRead - contentStartIndex);
 
-			// Protocol might require content always ends with 0x00, or allow variable length up to packet end.
-            // Assuming it ends with a null terminator as per original code structure.
 			if (contentNullPos < contentStartIndex) // No null terminator found for content
 			{
-                 _logger.LogWarning("Malformed MSG (ID: {MessageId}): No Content null terminator found. Using remaining bytes as content.", messageId);
-                 contentNullPos = bytesRead; // Treat rest as content
+				_logger.LogWarning("Malformed MSG (ID: {MessageId}): No Content null terminator found.", messageId);
+				// --- Error Handling as per Rules ---
+				Console.WriteLine("ERROR: Received malformed message from server (invalid content format).");
+				await SendErrorAsync($"Malformed MSG packet (missing content null terminator).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed MSG (invalid content).", false);
+				return; // Stop processing
 			}
+
+			// Check if there's unexpected data after the content null terminator
+			if (contentNullPos + 1 != bytesRead)
+			{
+				_logger.LogWarning("Malformed MSG (ID: {MessageId}): Unexpected data ({ExtraBytes} bytes) after content null terminator.", messageId,
+					bytesRead - (contentNullPos + 1));
+				// --- Error Handling as per Rules ---
+				Console.WriteLine("ERROR: Received malformed message from server (extra data).");
+				await SendErrorAsync($"Malformed MSG packet (unexpected data after content).", sender);
+				await InitiateShutdownAsync("Protocol error: Received malformed MSG (extra data).", false);
+				return; // Stop processing
+			}
+
 
 			string messageContent = Encoding.ASCII.GetString(buffer, contentStartIndex, contentNullPos - contentStartIndex);
 
+			// --- Message Parsed Successfully ---
 			_logger.LogTrace("Parsed MSG ID:{MessageId} From:'{DisplayName}' Content:'{Content}'", messageId, displayName, messageContent);
 
 			// Display message only if client is in the Joined state
 			if (_currentState == ClientState.Joined)
 			{
-				// Use specified MSG format
 				Console.WriteLine($"{displayName}: {messageContent}");
 			}
 			else
 			{
-				// Received MSG message in an unexpected state
+				// Received MSG message in an unexpected state - Rules don't explicitly say this is a terminating error.
 				_logger.LogWarning("Received MSG (ID:{MessageId}) from {DisplayName} while not in Joined state ({State}). Ignoring display.",
 					messageId, displayName, _currentState);
-				// No console output for MSG in wrong state according to strict rules. Log only.
+				// No console error, ERR send, or shutdown based *only* on provided rules for this case.
 			}
 		}
-		catch (ArgumentOutOfRangeException aoorex) // LogError during GetString if indices are wrong
-		{
-			_logger.LogError(aoorex, "Parsing error (ArgumentOutOfRange) processing MSG ID:{MessageId} from {Sender}. Check indices/lengths. BytesRead:{BytesRead}",
-				messageId, sender, bytesRead);
-             Console.WriteLine($"ERROR: Internal parsing error for incoming MSG message from {sender}."); // Use internal error format
-             // Optionally send ERR back
-             // SendErrorAsync($"Internal error parsing MSG packet.", sender).GetAwaiter().GetResult(); // Sync call
-		}
-		catch (Exception ex) // Catch-all for other potential parsing errors
+		catch (Exception ex) // Other unexpected internal parsing errors
 		{
 			_logger.LogError(ex, "Unexpected exception while parsing MSG message ID:{MessageId} from {Sender}", messageId, sender);
-             Console.WriteLine($"ERROR: Unexpected internal error parsing incoming MSG message from {sender}."); // Use internal error format
-             // Optionally send ERR back
-             // SendErrorAsync($"Unexpected error parsing MSG packet.", sender).GetAwaiter().GetResult(); // Sync call
+			// --- Error Handling as per Rules ---
+			Console.WriteLine($"ERROR: Unexpected internal error parsing incoming MSG message from {sender}.");
+			await SendErrorAsync($"Unexpected error parsing MSG packet from {sender}.", sender);
+			await InitiateShutdownAsync($"Protocol error: Unexpected error parsing MSG from {sender}.", false);
+			// --- End Error Handling ---
+			// No return needed, InitiateShutdownAsync handles exit flow.
 		}
 	}
 
@@ -537,7 +585,7 @@ public partial class UdpChatClient
 		if (bytesRead < (int)MessagesSizeBytes.Err) // Validate minimum size
 		{
 			_logger.LogError("Malformed ERR (ID:{MessageId}, too short: {Length} bytes) from {Sender}. Ignoring.", messageId, bytesRead, sender);
-             Console.WriteLine($"ERROR: Received malformed server ERR packet (too short: {bytesRead} bytes) from {sender}."); // Use internal error format
+			Console.WriteLine($"ERROR: Received malformed server ERR packet (too short: {bytesRead} bytes) from {sender}."); // Use internal error format
 			return;
 		}
 
@@ -562,19 +610,20 @@ public partial class UdpChatClient
 			int contentStartIndex = (displayNameNullPos >= displayNameStartIndex ? displayNameNullPos + 1 : displayNameStartIndex); // Start after DN or after ID if DN missing
 			if (contentStartIndex < bytesRead) // Only look for content if there are bytes after the display name/header
 			{
-                int contentNullPos = Array.IndexOf(buffer, (byte)0, contentStartIndex, bytesRead - contentStartIndex);
-                if (contentNullPos < contentStartIndex) // No null terminator for content
-                {
-                     _logger.LogWarning("Malformed ERR (ID: {MessageId}): No Content null terminator found. Using remaining bytes as content.", messageId);
-                     contentNullPos = bytesRead; // Use remaining bytes
-                }
-                messageContent = Encoding.ASCII.GetString(buffer, contentStartIndex, contentNullPos - contentStartIndex);
+				int contentNullPos = Array.IndexOf(buffer, (byte)0, contentStartIndex, bytesRead - contentStartIndex);
+				if (contentNullPos < contentStartIndex) // No null terminator for content
+				{
+					_logger.LogWarning("Malformed ERR (ID: {MessageId}): No Content null terminator found. Using remaining bytes as content.", messageId);
+					contentNullPos = bytesRead; // Use remaining bytes
+				}
+
+				messageContent = Encoding.ASCII.GetString(buffer, contentStartIndex, contentNullPos - contentStartIndex);
 			}
 		}
 		catch (Exception ex) // Catch-all for parsing errors
 		{
 			_logger.LogError(ex, "Exception while parsing ERR message ID:{MessageId}. Using defaults.", messageId);
-             Console.WriteLine($"ERROR: Internal parsing error for incoming ERR message from {sender}."); // Use internal error format
+			Console.WriteLine($"ERROR: Internal parsing error for incoming ERR message from {sender}."); // Use internal error format
 		}
 
 		_logger.LogError("ERR received from {DisplayName} ({Sender}): {Content}. Initiating shutdown.", displayName, sender, messageContent);
@@ -593,7 +642,7 @@ public partial class UdpChatClient
 		if (bytesRead < (int)MessagesSizeBytes.Bye) // Validate minimum size
 		{
 			_logger.LogWarning("Received malformed BYE (ID:{MessageId}, too short: {Length} bytes) from {Sender}. Ignoring.", messageId, bytesRead, sender);
-            Console.WriteLine($"ERROR: Received malformed server BYE packet (too short: {bytesRead} bytes) from {sender}."); // Use internal error format
+			Console.WriteLine($"ERROR: Received malformed server BYE packet (too short: {bytesRead} bytes) from {sender}."); // Use internal error format
 			return; // Exit handling
 		}
 
@@ -613,13 +662,13 @@ public partial class UdpChatClient
 			{
 				displayName = Encoding.ASCII.GetString(buffer, displayNameStartIndex, displayNameNullPos - displayNameStartIndex);
 			}
-            // Check for extra bytes after the display name null terminator if protocol is strict
-            // if (displayNameNullPos + 1 != bytesRead) { ... malformed ... }
+			// Check for extra bytes after the display name null terminator if protocol is strict
+			// if (displayNameNullPos + 1 != bytesRead) { ... malformed ... }
 		}
 		catch (Exception ex) // Catch-all for parsing errors
 		{
 			_logger.LogError(ex, "Exception while parsing BYE message ID:{MessageId}. Using default name.", messageId);
-            Console.WriteLine($"ERROR: Internal parsing error for incoming BYE message from {sender}."); // Use internal error format
+			Console.WriteLine($"ERROR: Internal parsing error for incoming BYE message from {sender}."); // Use internal error format
 		}
 
 		// Log and Display shutdown message

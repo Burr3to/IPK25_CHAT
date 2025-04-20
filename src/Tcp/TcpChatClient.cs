@@ -361,7 +361,7 @@ public class TcpChatClient
 						parsedMessage.Type, _currentState, parsedMessage.OriginalMessage);
 					Console.WriteLine($"ERROR: Received unexpected server message while waiting for reply ({parsedMessage.Type}).");
 					// Optional: Depending on protocol strictness, this might be a fatal error.
-					// await SendErrAndShutdownAsync($"Unexpected message ({parsedMessage.Type}) received while waiting for REPLY.");
+					await SendErrAndShutdownAsync($"Unexpected message ({parsedMessage.Type}) received while waiting for REPLY.");
 				}
 
 				break;
@@ -390,8 +390,7 @@ public class TcpChatClient
 						_logger.LogWarning("Received message undefined/malformed ({Type}) in Joined state. Original: {Original}",
 							parsedMessage.Type, parsedMessage.OriginalMessage);
 						Console.WriteLine($"ERROR: Received unhandled server message in Joined state ({parsedMessage.Type}).");
-						// Optional: Treat as fatal depending on protocol
-						// await SendErrAndShutdownAsync($"Received unhandled message ({parsedMessage.Type}) in Joined state.");
+						await SendErrAndShutdownAsync($"Received unhandled message ({parsedMessage.Type}) in Joined state.");
 						break;
 				}
 
@@ -404,7 +403,7 @@ public class TcpChatClient
 					parsedMessage.Type, _currentState, parsedMessage.OriginalMessage);
 				Console.WriteLine($"ERROR: Received unexpected server message before authentication ({parsedMessage.Type}).");
 				// Optional: Consider shutting down or sending ERR here.
-				// await SendErrAndShutdownAsync($"Unexpected message ({parsedMessage.Type}) received before authentication.");
+				await SendErrAndShutdownAsync($"Unexpected message ({parsedMessage.Type}) received before authentication.");
 				break;
 
 			case ClientState.Start: // Socket not yet connected/setup

@@ -18,12 +18,12 @@ public partial class UdpChatClient // Indicates this class definition is split a
 	// --- Client State & Identity ---
 	private ClientState _currentState;
 	private string _currentDisplayName; // Client's display name after successful AUTH
-	private string _currentUsername;   // Client's username after successful AUTH
-	private string _currentChannelId;  // Channel ID after successful JOIN
+	private string _currentUsername; // Client's username after successful AUTH
+	private string _currentChannelId; // Channel ID after successful JOIN
 
 	// --- Pending State (during handshake) ---
 	private string _pendingUsername; // Stored during AUTH request while waiting for REPLY
-	private string _pendingSecret;   // Stored during AUTH request while waiting for REPLY
+	private string _pendingSecret; // Stored during AUTH request while waiting for REPLY
 	private string _pendingDisplayName; // Stored during AUTH request while waiting for REPLY
 
 	// --- Reliability & Control ---
@@ -37,7 +37,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 	private readonly ConcurrentDictionary<ushort, TaskCompletionSource<ParsedServerMessage>> _pendingReplies = new(); // For messages expecting a REPLY (like AUTH, JOIN)
 
 	// Constants for reliability (as per original code)
-	private const int ReplyTimeoutMilliseconds = 5000; 
+	private const int ReplyTimeoutMilliseconds = 5000;
 	private const int ConfirmationTimeoutMilliseconds = 250; // Timeout waiting for a CONFIRM for
 	private const int MaxRetries = 3; // Max retries for reliable messages (total attempts = 4)
 
@@ -106,8 +106,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 			// Socket is ready, client is in initial state
 			Utils.SetState(ref _currentState, ClientState.Start, _logger);
 			_logger.LogInformation("UDP Socket bound locally to: {LocalEndPoint}", _socket.LocalEndPoint);
-			Console.WriteLine("UDP Client ready."); // User feedback
-			Console.WriteLine("Please authenticate using /auth <Username> <Secret> <DisplayName>"); // User guidance
+			_logger.LogInformation("Please authenticate using /auth <Username> <Secret> <DisplayName>"); // User guidance
 
 
 			// Start the concurrent receive and user input handling tasks
@@ -156,7 +155,6 @@ public partial class UdpChatClient // Indicates this class definition is split a
 			// Loop while cancellation is not requested and client is not ending
 			while (!cancellationToken.IsCancellationRequested && _currentState != ClientState.End)
 			{
-				Console.Write("> "); // Prompt user (assuming prompts are allowed)
 				string input = await Task.Run(() => Console.ReadLine(), cancellationToken); // ReadLine on background thread
 
 				if (input == null || cancellationToken.IsCancellationRequested) // Ctrl+D or external cancellation
@@ -172,9 +170,9 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				var parsed = _userInputParser.ParseUserInput(input); // Use the injected parser
 
 				if (parsed.Type == UserInputParser.CommandParseResultType.Unknown)
-					continue; // Error already printed by parser
+					continue;
 
-                // --- State Validation (Original Logic) ---
+				// --- State Validation (Original Logic) ---
 				bool canProceed = true;
 				switch (_currentState)
 				{
@@ -185,6 +183,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 							Console.WriteLine("ERROR: Must authenticate first. Use /auth <Username> <Secret> <DisplayName>");
 							canProceed = false;
 						}
+
 						break;
 
 					case ClientState.Authenticating:
@@ -193,6 +192,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 							Console.WriteLine("ERROR: Please wait for authentication to complete.");
 							canProceed = false;
 						}
+
 						break;
 
 					case ClientState.Joining: // zbytocne? (Note: Original comment, keep for now)
@@ -201,6 +201,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 							Console.WriteLine("ERROR: Please wait for join operation to complete.");
 							canProceed = false;
 						}
+
 						break;
 
 					case ClientState.Joined:
@@ -209,6 +210,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 							Console.WriteLine("ERROR: Already authenticated.");
 							canProceed = false;
 						}
+
 						// Allow ChatMessage, Join, Rename, Help in Joined state - no explicit check needed here, as other cases prevent them elsewhere
 						break;
 
@@ -227,10 +229,10 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				{
 					continue; // Skip processing if state validation failed
 				}
-                // --- End State Validation ---
+				// --- End State Validation ---
 
 
-                // Process the valid command (send packet, update local state, etc.)
+				// Process the valid command (send packet, update local state, etc.)
 				await ProcessParsedUserInputAsync(parsed, cancellationToken); // Defined below
 			}
 		}
@@ -276,7 +278,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 				// Set state *before* sending request
 				Utils.SetState(ref _currentState, ClientState.Authenticating, _logger);
-				Console.WriteLine($"Attempting authentication as '{_pendingDisplayName}'..."); // User feedback (assuming allowed)
+				_logger.LogInformation($"Attempting authentication as '{_pendingDisplayName}'...");
 
 				// Send AUTH packet and wait for REPLY using reliable send mechanism
 				await SendAuthRequestAsync(_pendingUsername, _pendingDisplayName, _pendingSecret, cancellationToken); // Defined below
@@ -290,41 +292,43 @@ public partial class UdpChatClient // Indicates this class definition is split a
 					_logger.LogWarning("Attempted JOIN from incorrect state after validation: {State}", _currentState);
 					return; // Exit method
 				}
-                 if (string.IsNullOrEmpty(_currentDisplayName)) // Also need a confirmed display name
-                 {
-                     _logger.LogWarning("Attempted JOIN without a confirmed display name ({State})", _currentState);
-                     Console.WriteLine("ERROR: Must authenticate successfully first to set your display name.");
-                      return; // Exit method
-                 }
 
-                // Set state *before* sending request
-                // Note: UDP JOIN might stay in Authenticated until JOIN OK REPLY
-                // Let's set to Joining state while waiting for reply, revert on failure/timeout.
+				if (string.IsNullOrEmpty(_currentDisplayName)) // Also need a confirmed display name
+				{
+					_logger.LogWarning("Attempted JOIN without a confirmed display name ({State})", _currentState);
+					Console.WriteLine("ERROR: Must authenticate successfully first to set your display name.");
+					return; // Exit method
+				}
+
+				// Set state *before* sending request
+				// Note: UDP JOIN might stay in Authenticated until JOIN OK REPLY
+				// Let's set to Joining state while waiting for reply, revert on failure/timeout.
 				Utils.SetState(ref _currentState, ClientState.Joining, _logger);
 				_currentChannelId = parsed.ChannelId; // Store pending channel ID
-				Console.WriteLine($"Attempting to join channel '{parsed.ChannelId}'..."); // User feedback (assuming allowed)
+				_logger.LogInformation($"Attempting to join channel '{parsed.ChannelId}'..."); // User feedback (assuming allowed)
 
-                // Send JOIN packet and wait for REPLY using reliable send mechanism
+				// Send JOIN packet and wait for REPLY using reliable send mechanism
 				await SendJoinRequestAsync(parsed.ChannelId, _currentDisplayName, cancellationToken); // Use confirmed display name, Defined below
 
 				break;
 
 			case UserInputParser.CommandParseResultType.Rename:
 				// /rename is handled locally in this protocol version (based on original code logic)
-                // Truncate display name using static ClientMessageFormatter helper (even if not sent, for validation/local storage), passing logger
+				// Truncate display name using static ClientMessageFormatter helper (even if not sent, for validation/local storage), passing logger
 				string newName = ClientMessageFormatter.Truncate(parsed.DisplayName, ProtocolValidation.MaxDisplayNameLength, "Rename DisplayName", _logger);
 				// Validate truncated name using static ProtocolValidation
 				if (ProtocolValidation.IsValidDisplayName(newName))
 				{
 					_currentDisplayName = newName; // Update local display name
 					_logger.LogInformation("Local display name changed to {DisplayName}", _currentDisplayName);
-                    // No console output for this local change according to strict rules. Log only.
+					// No console output for this local change according to strict rules. Log only.
 				}
 				else
 				{
 					// Validation failed, error logged by Truncate/IsValidDisplayName. Use internal error format.
 					Console.WriteLine("ERROR: Invalid display name format/characters for /rename.");
 				}
+
 				// No server message for this local command
 				break;
 
@@ -340,14 +344,15 @@ public partial class UdpChatClient // Indicates this class definition is split a
 					_logger.LogWarning("Attempted ChatMessage from incorrect state after validation: {State}", _currentState);
 					return; // Exit method
 				}
-                 if (string.IsNullOrEmpty(_currentDisplayName) || string.IsNullOrEmpty(_currentChannelId)) // Also need display name and channel
-                 {
-                      _logger.LogWarning("Attempted ChatMessage without display name or channel ({State})", _currentState);
-                       Console.WriteLine("ERROR: Authentication and joining a channel are required to chat.");
-                       return; // Exit method
-                 }
 
-                // Send MSG packet and wait for CONFIRM using reliable send mechanism
+				if (string.IsNullOrEmpty(_currentDisplayName) || string.IsNullOrEmpty(_currentChannelId)) // Also need display name and channel
+				{
+					_logger.LogWarning("Attempted ChatMessage without display name or channel ({State})", _currentState);
+					Console.WriteLine("ERROR: Authentication and joining a channel are required to chat.");
+					return; // Exit method
+				}
+
+				// Send MSG packet and wait for CONFIRM using reliable send mechanism
 				await SendMessageRequestAsync(_currentDisplayName, parsed.OriginalInput, cancellationToken); // Use confirmed display name, Defined below
 				break;
 
@@ -358,9 +363,9 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 			// Default case for safety, though all defined types are covered above
 			default:
-                 _logger.LogError("Unhandled ParsedUserInput type in ProcessParsedUserInputAsync: {Type}", parsed.Type);
-                 Console.WriteLine($"ERROR: Internal error - Unhandled command type ({parsed.Type}).");
-                 break;
+				_logger.LogError("Unhandled ParsedUserInput type in ProcessParsedUserInputAsync: {Type}", parsed.Type);
+				Console.WriteLine($"ERROR: Internal error - Unhandled command type ({parsed.Type}).");
+				break;
 		}
 	}
 
@@ -450,7 +455,8 @@ public partial class UdpChatClient // Indicates this class definition is split a
 						if (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
 						{
 							// It was a timeout
-							_logger.LogWarning("Timeout waiting for CONFIRM for MessageID: {MessageId}, Attempt: {Attempt}/{MaxAttempts}. Retrying...", messageId, attempt + 1, MaxRetries + 1);
+							_logger.LogWarning("Timeout waiting for CONFIRM for MessageID: {MessageId}, Attempt: {Attempt}/{MaxAttempts}. Retrying...", messageId, attempt + 1,
+								MaxRetries + 1);
 							// No delay needed here, the next iteration's Task.Delay handles it or we continue loop immediately
 						}
 						else
@@ -529,16 +535,13 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 		var localReplyTcs = replyTcs; // Use local variable
 
-		// Reply Timeout (constant defined near fields now)
-		const int CurrentReplyTimeoutMilliseconds = ReplyTimeoutMilliseconds;
-
 		try
 		{
-			using var replyTimeoutCts = new CancellationTokenSource(CurrentReplyTimeoutMilliseconds); // Timeout for REPLY
+			using var replyTimeoutCts = new CancellationTokenSource(ReplyTimeoutMilliseconds); // Timeout for REPLY
 			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, replyTimeoutCts.Token);
 
 			// Wait for either the reply TCS to be set or the timeout/cancellation
-			var completedTask = await Task.WhenAny(localReplyTcs.Task, Task.Delay(-1, linkedCts.Token));
+			var completedTask = await Task.WhenAny(localReplyTcs.Task, Task.Delay(ReplyTimeoutMilliseconds, linkedCts.Token));
 
 			if (completedTask == localReplyTcs.Task)
 			{
@@ -766,53 +769,56 @@ public partial class UdpChatClient // Indicates this class definition is split a
 	// isClientInitiatedEof is true if triggered by user input EOF (Ctrl+C/D), false otherwise (server BYE, error, etc.).
 	private async Task InitiateShutdownAsync(string reason, bool isClientInitiatedEof = false)
 	{
-		// Check if shutdown is already in progress to avoid double execution
-		// Check _cts != null first, as Dispose might set it to null
+		// Check if already shutting down
 		if (_cts != null && _cts.IsCancellationRequested)
 		{
 			_logger.LogDebug("Shutdown already initiated. Reason: {Reason}", reason);
-			return; // Already shutting down
+			return;
 		}
 
-		// Log the initiation of shutdown
 		_logger.LogInformation("Initiating graceful shutdown. Reason: {Reason}", reason);
-		// Use specified internal error format for shutdown notification
-        Console.WriteLine($"ERROR: Client shutting down ({reason}).");
+		Console.WriteLine($"ERROR: Client shutting down ({reason}).");
 
-		// Set state to End early in the shutdown process
-		Utils.SetState(ref _currentState, ClientState.End, _logger);
+		// --- Capture state BEFORE signalling main cancellation ---
+		ClientState stateBeforeShutdown = _currentState;
 
-		// Signal cancellation to all tasks (ReceiveMessagesUdpAsync, HandleUserInputUdpAsync, any pending SendAsync)
+		// --- Signal main cancellation AFTER capturing state but BEFORE sending BYE ---
+		// This ensures loops stop but doesn't interfere with the final send.
 		_cts?.Cancel();
 
-		// Attempt to send a BYE message to the server if appropriate:
-		// - Socket is not null (UDP socket is "connected" after bind)
-		// - Client is in a state where sending BYE makes sense (Authenticated, Joining, or Joined)
-		// - Shutdown was initiated by the client's EOF (Ctrl+C/D), *not* by the server sending BYE or an internal error.
-		// - We have a valid _currentServerEndPoint to send to
+		// Attempt to send BYE
 		if (isClientInitiatedEof && _socket != null && _currentServerEndPoint != null &&
-		    (_currentState == ClientState.Authenticating || _currentState == ClientState.Joined || _currentState == ClientState.Authenticating || _currentState == ClientState.Joining)) // Also allow sending BYE if we were in auth/joining state
+		    (stateBeforeShutdown == ClientState.Authenticating || stateBeforeShutdown == ClientState.Joined || stateBeforeShutdown == ClientState.Joining))
 		{
 			_logger.LogInformation("Attempting to send BYE message to {TargetEndPoint}...", _currentServerEndPoint);
-			// Get next message ID and format the packet
 			ushort byeId = _nextMessageId++;
-			string byeDisplayName = string.IsNullOrEmpty(_currentDisplayName) ? "Client" : _currentDisplayName; // Use Client if display name isn't set
-			byte[] byeBytes = UdpMessageFormat.FormatByeManually(byeId, byeDisplayName); // Assumes UdpMessageFormat static class
+			string byeDisplayName = string.IsNullOrEmpty(_currentDisplayName) ? "Client" : _currentDisplayName;
+			byte[] byeBytes = UdpMessageFormat.FormatByeManually(byeId, byeDisplayName);
 
 			if (byeBytes != null)
 			{
 				try
 				{
-					// Send BYE as a best-effort, non-reliable message during shutdown for UDP
-                    // Use SendToAsync directly without waiting for confirmation, as part of shutdown
-                    // Using a cancellation token for this final send attempt
-                    using var byeSendCts = new CancellationTokenSource(TimeSpan.FromSeconds(1)); // Short timeout
-                    using var linkedByeCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, byeSendCts.Token);
-                    await _socket.SendToAsync(byeBytes, SocketFlags.None, _currentServerEndPoint, linkedByeCts.Token);
+					// Use ONLY the short timeout token for the final send ---
+					using var byeTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
-					_logger.LogInformation("BYE message (ID: {ByeId}) sent (best effort).", byeId);
+					// Double-check socket is still valid *before* sending
+					if (_socket != null)
+					{
+						// Pass ONLY the timeout token, not the main cancelled one
+						await _socket.SendToAsync(byeBytes, SocketFlags.None, _currentServerEndPoint, byeTimeoutCts.Token);
+						_logger.LogInformation("BYE message (ID: {ByeId}) sent (best effort).", byeId);
+					}
+					else
+					{
+						_logger.LogWarning("Socket became null before sending BYE message.");
+					}
 				}
-				catch (Exception ex)
+				catch (OperationCanceledException) // Catch timeout specifically
+				{
+					_logger.LogWarning("Sending BYE message timed out (1 second limit).");
+				}
+				catch (Exception ex) // Catch other errors (SocketException, etc.)
 				{
 					_logger.LogWarning(ex, "Failed to send BYE message during shutdown.");
 				}
@@ -824,15 +830,21 @@ public partial class UdpChatClient // Indicates this class definition is split a
 		}
 		else
 		{
-             _logger.LogDebug("Skipping sending BYE message during shutdown. isClientInitiatedEof={IsClientEOF}, SocketNotNull={SocketNotNull}, EndPointSet={EndPointSet}, State={State}, DisplayNameSet={DisplayNameSet}",
-                 isClientInitiatedEof, _socket != null, _currentServerEndPoint != null, _currentState, !string.IsNullOrEmpty(_currentDisplayName));
+			_logger.LogDebug(
+				"Skipping sending BYE message during shutdown. isClientInitiatedEof={IsClientEOF}, SocketNotNull={SocketNotNull}, EndPointSet={EndPointSet}, StateBeforeShutdown={State}, DisplayNameSet={DisplayNameSet}", // Use stateBeforeShutdown here too for consistency
+				isClientInitiatedEof, _socket != null, _currentServerEndPoint != null, stateBeforeShutdown, !string.IsNullOrEmpty(_currentDisplayName));
 		}
 
-		// Cancel any outstanding pending operations (clears dictionaries and cancels their TCSs)
+		// Set state to End
+		Utils.SetState(ref _currentState, ClientState.End, _logger);
+
+		// Cancel any outstanding pending operations
 		CancelAllPendingOperations($"Shutdown initiated: {reason}");
 
-		await Task.Delay(50); // Small delay for BYE message
+		// Delay slightly to allow BYE packet potentially leave the system
+		await Task.Delay(50, CancellationToken.None);
 
+		// Dispose resources
 		OwnDispose();
 	}
 
@@ -852,6 +864,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				_logger.LogTrace("Cancelled pending confirm TCS for MessageID: {MessageId}", key);
 			}
 		}
+
 		_pendingConfirms.Clear(); // Ensure dictionary is empty
 
 		// Cancel all pending REPLY TaskCompletionSources
@@ -862,9 +875,10 @@ public partial class UdpChatClient // Indicates this class definition is split a
 			{
 				// Use TrySetCanceled to signal the tasks are cancelled
 				tcs.TrySetCanceled(_cts.Token); // Pass the main token if relevant
-                 _logger.LogTrace("Cancelled pending reply TCS for MessageID: {MessageId}", key);
+				_logger.LogTrace("Cancelled pending reply TCS for MessageID: {MessageId}", key);
 			}
 		}
+
 		_pendingReplies.Clear(); // Ensure dictionary is empty
 
 		// Clear the processed incoming message IDs cache (optional, but good cleanup)
@@ -883,7 +897,14 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 		var mainCtsToDispose = _cts;
 		_cts = null; // Nullify member variable FIRST
-		try { mainCtsToDispose?.Dispose(); } catch (Exception ex) { _logger.LogWarning(ex, "Exception during main Cts Dispose."); }
+		try
+		{
+			mainCtsToDispose?.Dispose();
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Exception during main Cts Dispose.");
+		}
 
 
 		// Clear dictionaries - TCSs should already be cancelled by CancelAllPendingOperations
@@ -918,5 +939,4 @@ public partial class UdpChatClient // Indicates this class definition is split a
 
 		_logger.LogDebug("OwnDispose finished.");
 	}
-
 }

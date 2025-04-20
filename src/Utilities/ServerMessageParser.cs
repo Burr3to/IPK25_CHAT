@@ -38,21 +38,23 @@ public class ParsedServerMessage
 // Provides static methods for parsing incoming TCP messages from the server.
 public static class ServerMessageParser // Made static
 {
-	// Regex for parsing incoming REPLY messages.
-	// Captures Status (OK/NOK) and Content. Uses Singleline option.
-	private static readonly Regex ReplyRegex = new(@"^REPLY (?<Status>OK|NOK) IS(?<Content>.*)$", RegexOptions.Compiled | RegexOptions.Singleline);
+	// Regex for parsing incoming REPLY messages (case-insensitive).
+	// Captures Status (OK/NOK) and Content. Uses Singleline and IgnoreCase options.
+	private static readonly Regex ReplyRegex = new(@"^REPLY (?<Status>OK|NOK) IS(?<Content>.*)$", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
-	// Regex for parsing incoming MSG messages.
-	// Captures Display Name and Content. Uses Singleline option.
-	private static readonly Regex MsgRegex = new(@"^MSG FROM (?<DName>[\x21-\x7E]{1,20}) IS (?<Content>.*)$", RegexOptions.Compiled | RegexOptions.Singleline);
+	// Regex for parsing incoming MSG messages (case-insensitive).
+	// Captures Display Name and Content. Uses Singleline and IgnoreCase options.
+	private static readonly Regex MsgRegex = new(@"^MSG FROM (?<DName>[\x21-\x7E]{1,20}) IS (?<Content>.*)$",
+		RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
-	// Regex for parsing incoming ERR messages.
-	// Captures Display Name and Content. Uses Singleline option.
-	private static readonly Regex ErrRegex = new(@"^ERR FROM (?<DName>[\x21-\x7E]{1,20}) IS (?<Content>.*)$", RegexOptions.Compiled | RegexOptions.Singleline);
+	// Regex for parsing incoming ERR messages (case-insensitive).
+	// Captures Display Name and Content. Uses Singleline and IgnoreCase options.
+	private static readonly Regex ErrRegex = new(@"^ERR FROM (?<DName>[\x21-\x7E]{1,20}) IS (?<Content>.*)$",
+		RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
-	// Regex for parsing incoming BYE messages.
-	// Captures Display Name.
-	private static readonly Regex ByeRegex = new(@"^BYE FROM (?<DName>[\x21-\x7E]{1,20})$", RegexOptions.Compiled);
+	// Regex for parsing incoming BYE messages (case-insensitive).
+	// Captures Display Name. Uses IgnoreCase option.
+	private static readonly Regex ByeRegex = new(@"^BYE FROM (?<DName>[\x21-\x7E]{1,20})$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 
 	// Parses an incoming TCP message string received from the server.
@@ -83,8 +85,7 @@ public static class ServerMessageParser // Made static
 		if (match.Success)
 		{
 			result.Type = ServerMessageType.Reply;
-			result.IsOkReply = match.Groups["Status"].Value == "OK";
-			// Trim leading space from content if present
+			result.IsOkReply = match.Groups["Status"].Value.Equals("OK", StringComparison.OrdinalIgnoreCase);
 			result.Content = match.Groups["Content"].Value.TrimStart();
 			return result;
 		}
