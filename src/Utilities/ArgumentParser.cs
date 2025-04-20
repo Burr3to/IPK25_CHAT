@@ -21,10 +21,6 @@ public class ArgumentParser
 
 		[Option('h', "help", HelpText = "Prints program help output and exits.")]
 		public bool Help { get; set; }
-
-		// Note: The "User provided" arguments are marked as Required = true.
-		// Optional arguments have Default values specified.
-		// The -h/--help option uses the Set = true to automatically trigger help display.
 	}
 
 	public static Options ParseArguments(string[] args)
@@ -36,7 +32,7 @@ public class ArgumentParser
 			if (parsed.Value.Help)
 			{
 				Console.WriteLine(HelpText.AutoBuild(result));
-				return null; // Indicate that we've displayed help and should exit
+				return null;
 			}
 
 			return parsed.Value;
@@ -44,13 +40,7 @@ public class ArgumentParser
 		else
 		{
 			Console.WriteLine(HelpText.AutoBuild(result));
-			return null; // Indicate parsing failure
+			return null;
 		}
-	}
-
-	private static void DisplayHelp(ParserResult<Options> result)
-	{
-		var helpText = HelpText.AutoBuild(result);
-		Console.WriteLine(helpText);
 	}
 }

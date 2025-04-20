@@ -334,7 +334,7 @@ public partial class UdpChatClient // Indicates this class definition is split a
 				break;
 
 			case UserInputParser.CommandParseResultType.Help:
-				Utils.PrintHelp(); // Static call (assuming help output is allowed)
+				Utils.PrintHelp();
 				// No server message
 				break;
 
