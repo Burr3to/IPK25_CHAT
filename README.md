@@ -662,6 +662,13 @@ Klient prejde do stavu Joined.
 #### Priebeh komunácie v programe Wireshark
 
 ![cp1](img/wiresharkTcpNetcat.jpg)  
+                 
+
+**Záver Testu:**
+
+Manuálny test s použitím netcat pre TCP variantu klienta potvrdil správne nadviazanie TCP spojenia, korektné formátovanie a odosielanie textových správ (AUTH, JOIN, MSG, BYE). Klient správne prijímal, parsoval a reagoval na odpovede servera (REPLY OK) a správy od iných používateľov (MSG). Lokálny príkaz /rename neprodukoval sieťovú aktivitu, čo je správne. Bola overená aj sekvencia ukončenia spojenia vrátane odoslania správy BYE pri ukončení iniciovanom používateľom (Ctrl+D). Test demonštroval funkčnosť klienta pri základnej interakcii podľa protokolu IPK25-CHAT cez TCP.
+    
+
 
 #### Tcpdump:
 
@@ -835,10 +842,6 @@ Klient prejde do stavu Joined.
 
 
 
-**Záver Testu:**
-
-Manuálny test s použitím netcat pre TCP variantu klienta potvrdil správne nadviazanie TCP spojenia, korektné formátovanie a odosielanie textových správ (AUTH, JOIN, MSG, BYE). Klient správne prijímal, parsoval a reagoval na odpovede servera (REPLY OK) a správy od iných používateľov (MSG). Lokálny príkaz /rename neprodukoval sieťovú aktivitu, čo je správne. Bola overená aj sekvencia ukončenia spojenia vrátane odoslania správy BYE pri ukončení iniciovanom používateľom (Ctrl+D). Test demonštroval funkčnosť klienta pri základnej interakcii podľa protokolu IPK25-CHAT cez TCP.
-    
         
 ### Bibliografia    
 
