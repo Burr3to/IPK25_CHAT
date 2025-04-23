@@ -255,10 +255,34 @@ Test > (mlieko potom cerealie)
 # Očakávame odoslanie MSG so zmeneným DisplayName 'Vysavac'.  
 ```  
 Používateľ ukončí vstup sekvenciou CTRL + D, ktorá signalizuje koniec štandardného vstupu. Klient by mal následne iniciovať riadené ukončenie spojenia (pokúsi poslať BYE správu).  
-                         
+                                  
+#### Priebeh komunikacie v programe Wireshark
+
 ![Wireshark](img/wiresharkUdp1.jpg)      
+
+#### Reálny výstup komunikácie v programe Discord
+
+    discord.general
+    TestovanieSkuska has joined discord.general via UDP.
+    test1 has joined discord.general via TCP.  
       
- ![Discord](img/discordUdp1.jpg)     
+    test1  
+        jj  
+       
+    TestovanieSkuska has switched from discord.general to discord.verified-3.
+    discord.verified-3
+    TestovanieSkuska has joined discord.verified-3 via UDP.  
+      
+    TestovanieSkuska
+        Test > (mlieko potom cerealie)  
+      
+    Vysavac  
+        vysavac noises  
+
+    TestovanieSkuska has left discord.verified-3.
+
+
+
    
 **Analýza a Výsledky:**  
   
@@ -269,10 +293,10 @@ Počas behu klienta a po jeho ukončení sme analyzovali zachytený sieťový pr
     * Na zachytenej komunikácii vidíme výmenu UDP paketov. Je pozorovateľná počiatočná komunikácia s portom 4567 a následný prechod na komunikáciu s dynamickým serverovým portom (v ukážke 36396).
     * Pre každú odoslanú správu (`AUTH, JOIN, MSG`) vidíme, že klient ju posiela a server odpovedá `CONFIRM`. Pre `AUTH` a `JOIN` následne prichádza aj `REPLY` na dynamickom porte. Pre `MSG` prichádza potvrdenie `CONFIRM`.
 
-* **Výsledok na Discorde:** (Priložený obrázok img/discordUdp1.jpg)
+* **Výsledok na Discorde:**
 
     * V channele discord.verified-3 vidíme, že klient sa úspešne pripojil (zobrazený `JOIN` serverovou správou).
-    * Odoslané správy `Test > (mlieko potom cerealie)` a `*vysavac noises*` sa zobrazili v chate s korektným `DisplayName`, kde pôvodne "TestovanieSkuska" pre prvú správu a zmeneným "Vysavac" pre druhú. Správu `*vysavac noises*` v Discorde môžeme vidieť napísanú kurzívou, pretože Discord považuje vstup medzi `*` za formátovanie na kurzívu.
+    * Odoslané správy `Test > (mlieko potom cerealie)` a `*vysavac noises*` sa zobrazili v chate s korektným `DisplayName`, kde pôvodne "TestovanieSkuska" pre prvú správu a zmeneným "Vysavac" pre druhú.
 
 Počas testovania sme mohli vidieť aj vstup od iného používateľa s `DisplayName` `test1`, ktorý posielal správy počas nášho testu na server.
 
@@ -311,10 +335,27 @@ pelikan niekam leti
 ```
 
 Používateľ ukončí program stlačením klávesovej skratky `CTRL + C`. Klient zachytí tento signál a inicializuje riadené ukončenie spojenia `InitiateShutdownAsync()`, čo zahŕňa odoslanie `BYE` správy serveru a následné riadené zatvorenie TCP socketu. 
+                                    
+#### Priebeh komunikacie v programe Wireshark
 
 ![WiresharkTcp1.jpg](img/WiresharkTcp1.jpg)     
-   
-![DiscordTcp1](img/DiscordTcp1.jpg)     
+         
+#### Reálny výstup komunikácie v programe Discord
+                                              
+
+    TestovanieSkuskaTcp has joined discord.general via TCP.
+    TestovanieSkuskaTcp has switched from discord.general to discord.verified-2.
+    
+    TestovanieSkuskaTcp has joined discord.verified-2 via TCP.
+    
+    TestovanieSkuskaTcp
+        abc 123 <>Hello<>
+    
+    Pelikan
+        pelikan niekam leti
+    
+    TestovanieSkuskaTcp has left discord.verified-2.
+
 
 **Analýza a Výsledky:**  
   
@@ -529,10 +570,275 @@ Test s Netcatom úspešne potvrdil správnu implementáciu nízkoúrovňových a
     17:34:44.975972 IP 127.0.0.1.41007 > 127.0.0.1.56266: UDP, length 3
     	0x0000:  4500 001f 8b46 4000 4011 b185 7f00 0001  E....F@.@.......
     	0x0010:  7f00 0001 a02f dbca 000b fe1e 0000 03    ...../.........
+                         
 
+### Netcat + TCP
+                                    
+Cieľ: Overiť základnú funkcionalitu TCP variantu klienta IPK25-CHAT, vrátane nadviazania spojenia, sekvencie autentifikácie, spojenia do kanála, odosielania a prijímania správ a ukončenia spojenia. Tento test používa nástroj netcat ako jednoduchý pseudo-server na manuálnu simuláciu serverových odpovedí.
 
+Prostredie: Test sa vykonáva lokálne. Vyžaduje dva terminály. Na rozdiel od UDP, TCP je spojovo orientované, takže nie je potrebné manuálne sledovať porty klienta – spojenie je udržiavané.
+
+Nástroje:
+
+* IPK25-CHAT Klient: ./ipk25chat-client
+ 
+* Netcat (nc): Na simuláciu servera.
+
+* Wireshark/tcpdump: Na sledovanie TCP segmentov.
+ 
+Terminály:
+
+* Terminál A (Netcat Pseudo-server): Tu pobeží netcat a bude čakať na pripojenie klienta. Budeme do neho manuálne písať odpovede servera.
+
+* Terminál B (IPK25-CHAT Klient): Tu pobeží náš klient program. Budeme zadávať príkazy a sledovať jeho výstup.
+
+Príkaz pre Netcat (Terminál A):
+Spustíme netcat v režime počúvania (-l) na porte 4567, pre IPv4 (-4), s podrobným výstupom (-v) a s flagom -c, ktorý zabezpečí odoslanie CRLF (\r\n) pri stlačení Enter (dôležité pre správne ukončovanie správ v našom protokole).
   
+          
+`nc -4 -c -l -v 127.0.0.1 4567`
 
+Netcat vypíše Listening on 127.0.0.1 4567 a čaká.
+
+Príkaz pre Klienta (Terminál B):
+Spustíme klienta v TCP režime (-t tcp) a pripojíme ho na adresu a port, kde počúva netcat.        
+
+           
+`./ipk25chat-client -t tcp -s 127.0.0.1 -p 4567
+`
+#### Priebeh Testu:
+
+Po spustení Netcat listenera (Terminál A) a klienta (Terminál B), začíname interakciu zadávaním príkazov v Termináli B a simulovaním odpovedí v Termináli A.
+
+1. **Autentifikácia:**
+
+* Terminál B (Klient): Zadanie príkazu: `/auth SkuskaTcp heslonieco kura`
+* Terminál A (Netcat): Prijme správu od klienta: `AUTH SkuskaTcp AS kura USING heslonieco`
+* Terminál A (Netcat): Manuálne zadanie odpovede servera a stlačenie Enter: `REPLY OK IS Auth success.`
+* Terminál B (Klient): Spracuje REPLY a vypíše: `Action Success: Auth success.`
+
+Klient prejde do stavu Joined.
+
+2. **Odoslanie Správy Klientom:**
+                               
+                  
+* Terminál B (Klient): Zadanie textu: `sprava s kurom`
+* Terminál A (Netcat): Prijme MSG správu od klienta: `MSG FROM kura IS sprava s kurom`
+
+3. **Lokálna Zmena Mena:**
+
+* Terminál B (Klient): Zadanie príkazu: `/rename Pes`
+* Terminál A (Netcat): Nič neprijme (príkaz je lokálny).
+* Terminál B (Klient): V logoch sa zaznamená zmena mena (používateľovi sa nič nevypíše).
+
+4. **Odoslanie Ďalšej Správy Klientom (s novým menom):**
+
+* Terminál B (Klient): Zadanie textu: `ja som teraz pes`
+* Terminál A (Netcat): Prijme MSG správu s novým menom: `MSG FROM Pes IS ja som teraz pes`
+
+5. **Pripojenie do Kanála:**
+
+* Terminál B (Klient): Zadanie príkazu: `/join coolchannel`
+* Terminál A (Netcat): Prijme JOIN správu: `JOIN coolchannel AS Pes`
+* Terminál A (Netcat): Manuálne zadanie odpovede servera a stlačenie Enter: `REPLY OK IS Joined channel coolchannel.`
+* Terminál B (Klient): Spracuje REPLY a vypíše: `Action Success: Joined channel coolchannel.`
+
+6. **Odoslanie Správy po Pripojení do Kanála:**
+
+* Terminál B (Klient): Zadanie textu: `novy channel hehe`
+* Terminál A (Netcat): Prijme MSG správu: `MSG FROM Pes IS novy channel hehe`
+
+7. __**Prijatie Správy od "Iného Používateľa":**__ 
+
+* Terminál A (Netcat): Manuálne zadanie správy od iného používateľa a stlačenie Enter: `MSG FROM AnotherUser IS ja som kamen.`
+* Terminál B (Klient): Prijme a zobrazí správu: `AnotherUser: ja som kamen.`
+
+8. **Ukončenie Klienta (Ctrl+D):**
+
+* Terminál B (Klient): Stlačenie Ctrl+D.
+* Terminál B (Klient): V logoch sa objaví iniciácia ukončenia, pokus o odoslanie BYE. Program sa ukončí.
+* Terminál A (Netcat): Prijme BYE správu od klienta a následne zaznamená ukončenie spojenia. `BYE FROM Pes`
+                                      
+#### Priebeh komunácie v programe Wireshark
+
+![cp1](img/wiresharkTcpNetcat.jpg)  
+
+#### Tcpdump:
+
+```
+21:38:20.541784 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [S], seq 3840881916, win 65495, options [mss 65495,sackOK,TS val 2097080792 ecr 0,nop,wscale 7], length 0
+	0x0000:  4500 003c 3651 4000 4006 0669 7f00 0001  E..<6Q@.@..i....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 34fc 0000 0000  .....|....4.....
+	0x0020:  a002 ffd7 fe30 0000 0204 ffd7 0402 080a  .....0..........
+	0x0030:  7cfe e9d8 0000 0000 0103 0307            |...........
+21:38:20.541807 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [S.], seq 3820528520, ack 3840881917, win 65483, options [mss 65495,sackOK,TS val 2097080792 ecr 2097080792,nop,wscale 7], length 0
+	0x0000:  4500 003c 0000 4000 4006 3cba 7f00 0001  E..<..@.@.<.....
+	0x0010:  7f00 0001 11d7 c57c e3b8 a388 e4ef 34fd  .......|......4.
+	0x0020:  a012 ffcb fe30 0000 0204 ffd7 0402 080a  .....0..........
+	0x0030:  7cfe e9d8 7cfe e9d8 0103 0307            |...|.......
+21:38:20.541826 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 1, win 512, options [nop,nop,TS val 2097080792 ecr 2097080792], length 0
+	0x0000:  4500 0034 3652 4000 4006 0670 7f00 0001  E..46R@.@..p....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 34fd e3b8 a389  .....|....4.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7cfe e9d8  .....(......|...
+	0x0030:  7cfe e9d8                                |...
+21:39:05.230613 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 1:42, ack 1, win 512, options [nop,nop,TS val 2097125480 ecr 2097080792], length 41
+	0x0000:  4500 005d 3653 4000 4006 0646 7f00 0001  E..]6S@.@..F....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 34fd e3b8 a389  .....|....4.....
+	0x0020:  8018 0200 fe51 0000 0101 080a 7cff 9868  .....Q......|..h
+	0x0030:  7cfe e9d8 4155 5448 2053 6b75 736b 6154  |...AUTH.SkuskaT
+	0x0040:  6370 2041 5320 6b75 7261 2055 5349 4e47  cp.AS.kura.USING
+	0x0050:  2068 6573 6c6f 6e69 6563 6f0d 0a         .heslonieco..
+21:39:05.230639 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 42, win 512, options [nop,nop,TS val 2097125480 ecr 2097125480], length 0
+	0x0000:  4500 0034 b6dd 4000 4006 85e4 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a389 e4ef 3526  .......|......5&
+	0x0020:  8010 0200 fe28 0000 0101 080a 7cff 9868  .....(......|..h
+	0x0030:  7cff 9868                                |..h
+21:39:07.065946 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 1:26, ack 42, win 512, options [nop,nop,TS val 2097127316 ecr 2097125480], length 25
+	0x0000:  4500 004d b6de 4000 4006 85ca 7f00 0001  E..M..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a389 e4ef 3526  .......|......5&
+	0x0020:  8018 0200 fe41 0000 0101 080a 7cff 9f94  .....A......|...
+	0x0030:  7cff 9868 5245 504c 5920 4f4b 2049 5320  |..hREPLY.OK.IS.
+	0x0040:  4175 7468 2073 7563 6365 7373 2e         Auth.success.
+21:39:07.065963 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 26, win 512, options [nop,nop,TS val 2097127316 ecr 2097127316], length 0
+	0x0000:  4500 0034 3654 4000 4006 066e 7f00 0001  E..46T@.@..n....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3526 e3b8 a3a2  .....|....5&....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7cff 9f94  .....(......|...
+	0x0030:  7cff 9f94                                |...
+21:39:07.065977 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 26:28, ack 42, win 512, options [nop,nop,TS val 2097127316 ecr 2097127316], length 2
+	0x0000:  4500 0036 b6df 4000 4006 85e0 7f00 0001  E..6..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3a2 e4ef 3526  .......|......5&
+	0x0020:  8018 0200 fe2a 0000 0101 080a 7cff 9f94  .....*......|...
+	0x0030:  7cff 9f94 0d0a                           |.....
+21:39:07.065981 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 28, win 512, options [nop,nop,TS val 2097127316 ecr 2097127316], length 0
+	0x0000:  4500 0034 3655 4000 4006 066d 7f00 0001  E..46U@.@..m....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3526 e3b8 a3a4  .....|....5&....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7cff 9f94  .....(......|...
+	0x0030:  7cff 9f94                                |...
+21:39:18.568596 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 42:75, ack 28, win 512, options [nop,nop,TS val 2097138818 ecr 2097127316], length 33
+	0x0000:  4500 0055 3656 4000 4006 064b 7f00 0001  E..U6V@.@..K....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3526 e3b8 a3a4  .....|....5&....
+	0x0020:  8018 0200 fe49 0000 0101 080a 7cff cc82  .....I......|...
+	0x0030:  7cff 9f94 4d53 4720 4652 4f4d 206b 7572  |...MSG.FROM.kur
+	0x0040:  6120 4953 2073 7072 6176 6120 7320 6b75  a.IS.sprava.s.ku
+	0x0050:  726f 6d0d 0a                             rom..
+21:39:18.568942 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 75, win 512, options [nop,nop,TS val 2097138818 ecr 2097138818], length 0
+	0x0000:  4500 0034 b6e0 4000 4006 85e1 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3a4 e4ef 3547  .......|......5G
+	0x0020:  8010 0200 fe28 0000 0101 080a 7cff cc82  .....(......|...
+	0x0030:  7cff cc82                                |...
+21:39:39.957580 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 75:109, ack 28, win 512, options [nop,nop,TS val 2097160207 ecr 2097138818], length 34
+	0x0000:  4500 0056 3657 4000 4006 0649 7f00 0001  E..V6W@.@..I....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3547 e3b8 a3a4  .....|....5G....
+	0x0020:  8018 0200 fe4a 0000 0101 080a 7d00 200f  .....J......}...
+	0x0030:  7cff cc82 4d53 4720 4652 4f4d 2050 6573  |...MSG.FROM.Pes
+	0x0040:  2049 5320 6a61 2073 6f6d 2074 6572 617a  .IS.ja.som.teraz
+	0x0050:  2070 6573 0d0a                           .pes..
+21:39:39.957596 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 109, win 512, options [nop,nop,TS val 2097160207 ecr 2097160207], length 0
+	0x0000:  4500 0034 b6e1 4000 4006 85e0 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3a4 e4ef 3569  .......|......5i
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d00 200f  .....(......}...
+	0x0030:  7d00 200f                                }...
+21:39:51.655503 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 109:134, ack 28, win 512, options [nop,nop,TS val 2097171905 ecr 2097160207], length 25
+	0x0000:  4500 004d 3658 4000 4006 0651 7f00 0001  E..M6X@.@..Q....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3569 e3b8 a3a4  .....|....5i....
+	0x0020:  8018 0200 fe41 0000 0101 080a 7d00 4dc1  .....A......}.M.
+	0x0030:  7d00 200f 4a4f 494e 2063 6f6f 6c63 6861  }...JOIN.coolcha
+	0x0040:  6e6e 656c 2041 5320 5065 730d 0a         nnel.AS.Pes..
+21:39:51.655521 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 134, win 512, options [nop,nop,TS val 2097171905 ecr 2097171905], length 0
+	0x0000:  4500 0034 b6e2 4000 4006 85df 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3a4 e4ef 3582  .......|......5.
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d00 4dc1  .....(......}.M.
+	0x0030:  7d00 4dc1                                }.M.
+21:39:54.102310 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 28:67, ack 134, win 512, options [nop,nop,TS val 2097174352 ecr 2097171905], length 39
+	0x0000:  4500 005b b6e3 4000 4006 85b7 7f00 0001  E..[..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3a4 e4ef 3582  .......|......5.
+	0x0020:  8018 0200 fe4f 0000 0101 080a 7d00 5750  .....O......}.WP
+	0x0030:  7d00 4dc1 5245 504c 5920 4f4b 2049 5320  }.M.REPLY.OK.IS.
+	0x0040:  4a6f 696e 6564 2063 6861 6e6e 656c 2063  Joined.channel.c
+	0x0050:  6f6f 6c63 6861 6e6e 656c 2e              oolchannel.
+21:39:54.102418 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 67, win 512, options [nop,nop,TS val 2097174352 ecr 2097174352], length 0
+	0x0000:  4500 0034 3659 4000 4006 0669 7f00 0001  E..46Y@.@..i....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3582 e3b8 a3cb  .....|....5.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d00 5750  .....(......}.WP
+	0x0030:  7d00 5750                                }.WP
+21:39:54.102440 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 67:69, ack 134, win 512, options [nop,nop,TS val 2097174352 ecr 2097174352], length 2
+	0x0000:  4500 0036 b6e4 4000 4006 85db 7f00 0001  E..6..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3cb e4ef 3582  .......|......5.
+	0x0020:  8018 0200 fe2a 0000 0101 080a 7d00 5750  .....*......}.WP
+	0x0030:  7d00 5750 0d0a                           }.WP..
+21:39:54.102445 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 69, win 512, options [nop,nop,TS val 2097174352 ecr 2097174352], length 0
+	0x0000:  4500 0034 365a 4000 4006 0668 7f00 0001  E..46Z@.@..h....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3582 e3b8 a3cd  .....|....5.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d00 5750  .....(......}.WP
+	0x0030:  7d00 5750                                }.WP
+21:40:07.782185 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 134:169, ack 69, win 512, options [nop,nop,TS val 2097188032 ecr 2097174352], length 35
+	0x0000:  4500 0057 365b 4000 4006 0644 7f00 0001  E..W6[@.@..D....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 3582 e3b8 a3cd  .....|....5.....
+	0x0020:  8018 0200 fe4b 0000 0101 080a 7d00 8cc0  .....K......}...
+	0x0030:  7d00 5750 4d53 4720 4652 4f4d 2050 6573  }.WPMSG.FROM.Pes
+	0x0040:  2049 5320 6e6f 7679 2063 6861 6e6e 656c  .IS.novy.channel
+	0x0050:  2068 6568 650d 0a                        .hehe..
+21:40:07.782302 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 169, win 512, options [nop,nop,TS val 2097188032 ecr 2097188032], length 0
+	0x0000:  4500 0034 b6e5 4000 4006 85dc 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3cd e4ef 35a5  .......|......5.
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d00 8cc0  .....(......}...
+	0x0030:  7d00 8cc0                                }...
+21:40:40.465057 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 69:106, ack 169, win 512, options [nop,nop,TS val 2097220715 ecr 2097188032], length 37
+	0x0000:  4500 0059 b6e6 4000 4006 85b6 7f00 0001  E..Y..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3cd e4ef 35a5  .......|......5.
+	0x0020:  8018 0200 fe4d 0000 0101 080a 7d01 0c6b  .....M......}..k
+	0x0030:  7d00 8cc0 4d53 4720 4652 4f4d 2041 6e6f  }...MSG.FROM.Ano
+	0x0040:  7468 6572 5573 6572 2049 5320 6a61 2073  therUser.IS.ja.s
+	0x0050:  6f6d 206b 616d 656e 2e                   om.kamen.
+21:40:40.465153 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 106, win 512, options [nop,nop,TS val 2097220715 ecr 2097220715], length 0
+	0x0000:  4500 0034 365c 4000 4006 0666 7f00 0001  E..46\@.@..f....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 35a5 e3b8 a3f2  .....|....5.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d01 0c6b  .....(......}..k
+	0x0030:  7d01 0c6b                                }..k
+21:40:40.465174 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [P.], seq 106:108, ack 169, win 512, options [nop,nop,TS val 2097220715 ecr 2097220715], length 2
+	0x0000:  4500 0036 b6e7 4000 4006 85d8 7f00 0001  E..6..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3f2 e4ef 35a5  .......|......5.
+	0x0020:  8018 0200 fe2a 0000 0101 080a 7d01 0c6b  .....*......}..k
+	0x0030:  7d01 0c6b 0d0a                           }..k..
+21:40:40.465179 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 108, win 512, options [nop,nop,TS val 2097220715 ecr 2097220715], length 0
+	0x0000:  4500 0034 365d 4000 4006 0665 7f00 0001  E..46]@.@..e....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 35a5 e3b8 a3f4  .....|....5.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d01 0c6b  .....(......}..k
+	0x0030:  7d01 0c6b                                }..k
+21:40:47.896177 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [P.], seq 169:183, ack 108, win 512, options [nop,nop,TS val 2097228146 ecr 2097220715], length 14
+	0x0000:  4500 0042 365e 4000 4006 0656 7f00 0001  E..B6^@.@..V....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 35a5 e3b8 a3f4  .....|....5.....
+	0x0020:  8018 0200 fe36 0000 0101 080a 7d01 2972  .....6......}.)r
+	0x0030:  7d01 0c6b 4259 4520 4652 4f4d 2050 6573  }..kBYE.FROM.Pes
+	0x0040:  0d0a                                     ..
+21:40:47.896297 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [.], ack 183, win 512, options [nop,nop,TS val 2097228146 ecr 2097228146], length 0
+	0x0000:  4500 0034 b6e8 4000 4006 85d9 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3f4 e4ef 35b3  .......|......5.
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d01 2972  .....(......}.)r
+	0x0030:  7d01 2972                                }.)r
+21:40:47.897924 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [F.], seq 183, ack 108, win 512, options [nop,nop,TS val 2097228148 ecr 2097228146], length 0
+	0x0000:  4500 0034 365f 4000 4006 0663 7f00 0001  E..46_@.@..c....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 35b3 e3b8 a3f4  .....|....5.....
+	0x0020:  8011 0200 fe28 0000 0101 080a 7d01 2974  .....(......}.)t
+	0x0030:  7d01 2972                                }.)r
+21:40:47.899097 IP 127.0.0.1.4567 > 127.0.0.1.50556: Flags [F.], seq 108, ack 184, win 512, options [nop,nop,TS val 2097228149 ecr 2097228148], length 0
+	0x0000:  4500 0034 b6e9 4000 4006 85d8 7f00 0001  E..4..@.@.......
+	0x0010:  7f00 0001 11d7 c57c e3b8 a3f4 e4ef 35b4  .......|......5.
+	0x0020:  8011 0200 fe28 0000 0101 080a 7d01 2975  .....(......}.)u
+	0x0030:  7d01 2974                                }.)t
+21:40:47.899113 IP 127.0.0.1.50556 > 127.0.0.1.4567: Flags [.], ack 109, win 512, options [nop,nop,TS val 2097228149 ecr 2097228149], length 0
+	0x0000:  4500 0034 3660 4000 4006 0662 7f00 0001  E..46`@.@..b....
+	0x0010:  7f00 0001 c57c 11d7 e4ef 35b4 e3b8 a3f5  .....|....5.....
+	0x0020:  8010 0200 fe28 0000 0101 080a 7d01 2975  .....(......}.)u
+	0x0030:  7d01 2975                                }.)u
+```
+
+
+
+**Záver Testu:**
+
+Manuálny test s použitím netcat pre TCP variantu klienta potvrdil správne nadviazanie TCP spojenia, korektné formátovanie a odosielanie textových správ (AUTH, JOIN, MSG, BYE). Klient správne prijímal, parsoval a reagoval na odpovede servera (REPLY OK) a správy od iných používateľov (MSG). Lokálny príkaz /rename neprodukoval sieťovú aktivitu, čo je správne. Bola overená aj sekvencia ukončenia spojenia vrátane odoslania správy BYE pri ukončení iniciovanom používateľom (Ctrl+D). Test demonštroval funkčnosť klienta pri základnej interakcii podľa protokolu IPK25-CHAT cez TCP.
+    
         
 ### Bibliografia    
 
@@ -566,6 +872,9 @@ Gemini, Google LLC. Ako používať formátovanie Regex v c# .NET 9 s nastavený
 
 Gemini, Google LLC. Ako programovať s Microsoft.Extensions.Logging a ako prepojiť triedy s triedou Logging. [Online]. Available at: https://gemini.google.com
 
-Gemini, Google LLC. Test na UDP čast programu pomocou netcad a jeho dokumentáciu . [Online]. Available at: https://gemini.google.com
+Gemini, Google LLC. Test na UDP čast programu pomocou netcat a jeho dokumentáciu . [Online]. Available at: https://gemini.google.com
+
+Gemini, Google LLC. Test na TCP čast programu pomocou netcat a jeho dokumentáciu . [Online]. Available at: https://gemini.google.com
+
 
 
